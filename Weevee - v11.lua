@@ -16,7 +16,7 @@ include("DEFTerrainGeneratorW");
 function GetMapScriptInfo()
 	local world_age, temperature, rainfall, sea_level, resources = GetCoreMapOptions()
 	return {
-		Name = "Weevee Map - v10.5",
+		Name = "Weevee Map - v11",
 		Description = "HellBlazers Teamer Map combined with Skirmish. Uses Leszek Deska's mirroring algorithm. Frankensteined together by Meota.",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
@@ -98,6 +98,7 @@ function GetMapScriptInfo()
 					"Normal Land",
 					"Skirmish",
 					"Barrier Islands",
+					"Snow Wrap",
 				},
 				DefaultValue = 1,
 				SortPriority = -99,
@@ -181,7 +182,7 @@ function GetMapInitData(worldSize)
 	return {
 		Width = grid_size[1],
 		Height = grid_size[2],
-		WrapX = false,
+		WrapX = (Map.GetCustomOption(9) == 8),
 	};      
      end
 end
@@ -282,43 +283,45 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[i_innerst_plot] = PlotTypes.PLOT_OCEAN;
 		end
 	end
-	for x = 0, 0 do
-		for y = 1, iH - 2 do
-			local i = y * iW + x + 1;
-			self.wholeworldPlotTypes[i] = PlotTypes.PLOT_HILLS;
+	if SplitOps ~= 8 then
+		for x = 0, 0 do
+			for y = 1, iH - 2 do
+				local i = y * iW + x + 1;
+				self.wholeworldPlotTypes[i] = PlotTypes.PLOT_HILLS;
+			end
 		end
-	end
-	
+		
 
-	for x = 0, 0 do
-		local i = x + 1;
-		self.wholeworldPlotTypes[i] = PlotTypes.PLOT_MOUNTAIN;
-		local i = (iH - 1) * iW + x + 1;
-		self.wholeworldPlotTypes[i] = PlotTypes.PLOT_MOUNTAIN;
-	end
-	local west_half = {};
-	for loop = 1, iH - 2 do
-		table.insert(west_half, loop);
-	end
-	local west_shuffled = GetShuffledCopyOfTable(west_half)
-	local iNumMountainsPerColumn = math.max(math.floor(iH * 0.33), math.floor((iH / 3) - 1));
-	local x_west = 3;
-	for loop = 1, iNumMountainsPerColumn do
-		local y_west = west_shuffled[loop];
-		local i_west_plot = y_west * iW + x_west + 1;
-		self.wholeworldPlotTypes[i_west_plot] = PlotTypes.PLOT_OCEAN;
-	end
-	-- Add strips of ocean to the world borders.
-	for y = 0, iH do
-		for x = 0, 2 do
-			local plotIndex = y * iW + x + 1;
-			self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
+		for x = 0, 0 do
+			local i = x + 1;
+			self.wholeworldPlotTypes[i] = PlotTypes.PLOT_MOUNTAIN;
+			local i = (iH - 1) * iW + x + 1;
+			self.wholeworldPlotTypes[i] = PlotTypes.PLOT_MOUNTAIN;
 		end
-	end
-	for y = 0, iH do
-		for x = iW - 3, iW do
-			local plotIndex = y * iW + x + 1;
-			self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
+		local west_half = {};
+		for loop = 1, iH - 2 do
+			table.insert(west_half, loop);
+		end
+		local west_shuffled = GetShuffledCopyOfTable(west_half)
+		local iNumMountainsPerColumn = math.max(math.floor(iH * 0.33), math.floor((iH / 3) - 1));
+		local x_west = 3;
+		for loop = 1, iNumMountainsPerColumn do
+			local y_west = west_shuffled[loop];
+			local i_west_plot = y_west * iW + x_west + 1;
+			self.wholeworldPlotTypes[i_west_plot] = PlotTypes.PLOT_OCEAN;
+		end
+		-- Add strips of ocean to the world borders.
+		for y = 0, iH do
+			for x = 0, 2 do
+				local plotIndex = y * iW + x + 1;
+				self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
+			end
+		end
+		for y = 0, iH do
+			for x = iW - 3, iW do
+				local plotIndex = y * iW + x + 1;
+				self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
+			end
 		end
 	end
 
@@ -402,6 +405,72 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[i_east_plot] = PlotTypes.PLOT_MOUNTAIN;
 		end
 	end
+	if SplitOps == 8 then
+		local west_half = {};
+		for loop = 1, iH - 2 do
+			table.insert(west_half, loop);
+		end
+		local mountainOps = Map.GetCustomOption(11)
+		local mountainDensity = .20 + .05 * mountainOps
+		local iNumMountainsPerColumn = math.floor(iH * mountainDensity);
+
+		local front_shuffled = GetShuffledCopyOfTable(west_half)
+		local x_west, x_east = iW / 2 - 4, iW / 2 + 3;
+		for loop = 1, iNumMountainsPerColumn do
+			local y_west, y_east = front_shuffled[loop], iH - 1 - front_shuffled[loop];
+			self.wholeworldPlotTypes[y_west * iW + x_west + 1] = PlotTypes.PLOT_MOUNTAIN;
+			self.wholeworldPlotTypes[y_east * iW + x_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+		end
+
+		local wrap_shuffled = GetShuffledCopyOfTable(west_half)
+		local x_wrap_west, x_wrap_east = 3, iW - 4;
+		for loop = 1, iNumMountainsPerColumn do
+			local y_west, y_east = wrap_shuffled[loop], iH - 1 - wrap_shuffled[loop];
+			self.wholeworldPlotTypes[y_west * iW + x_wrap_west + 1] = PlotTypes.PLOT_MOUNTAIN;
+			self.wholeworldPlotTypes[y_east * iW + x_wrap_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+		end
+
+		local lakeSize = 9;
+		local seedX = math.floor(iW / 4);
+		local seedY = math.floor(iH / 2);
+		local minX = 6;
+		local maxX = math.floor(iW / 2) - 6;
+		if seedX < minX then
+			seedX = minX;
+		end
+		if seedX > maxX then
+			seedX = maxX;
+		end
+		local blob = {{seedX, seedY}};
+		self.wholeworldPlotTypes[seedY * iW + seedX + 1] = PlotTypes.PLOT_OCEAN;
+		local dirs = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
+		while #blob < lakeSize do
+			local candidates = {};
+			for _, p in ipairs(blob) do
+				for _, d in ipairs(dirs) do
+					local nx = p[1] + d[1];
+					local ny = p[2] + d[2];
+					if nx >= minX and nx <= maxX and ny >= 3 and ny <= iH - 4 then
+						local idx = ny * iW + nx + 1;
+						if self.wholeworldPlotTypes[idx] ~= PlotTypes.PLOT_OCEAN then
+							table.insert(candidates, {nx, ny, idx});
+						end
+					end
+				end
+			end
+			if #candidates == 0 then
+				break
+			end
+			local pick = candidates[Map.Rand(#candidates, "Snow Wrap Lake") + 1];
+			self.wholeworldPlotTypes[pick[3]] = PlotTypes.PLOT_OCEAN;
+			table.insert(blob, {pick[1], pick[2]});
+		end
+		for _, p in ipairs(blob) do
+			local mx = iW - p[1] - 1;
+			local my = iH - p[2] - 1;
+			self.wholeworldPlotTypes[my * iW + mx + 1] = PlotTypes.PLOT_OCEAN;
+		end
+	end
 	-- Plot Type generation completed. Return global plot array.
 	return self.wholeworldPlotTypes
 end
@@ -481,6 +550,41 @@ function GeneratePlotTypes()
 				end
 			end
 		end
+	end
+	if SplitOps == 8 then
+		local iW, iH = Map.GetGridSize();
+		local firstRingYIsEven = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
+		local firstRingYIsOdd = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
+		local function applyFoothills(xStart, xEnd)
+			for x = xStart, xEnd do
+				for y = 1, iH - 2 do
+					local plot = Map.GetPlot(x, y)
+					if plot ~= nil and plot:IsFlatlands() then
+						local isEvenY, search_table = true, {};
+						if y / 2 > math.floor(y / 2) then
+							isEvenY = false;
+						end
+						if isEvenY then
+							search_table = firstRingYIsEven;
+						else
+							search_table = firstRingYIsOdd;
+						end
+						for loop, plot_adjustments in ipairs(search_table) do
+							local searchX = x + plot_adjustments[1];
+							local searchY = y + plot_adjustments[2];
+							local searchPlot = Map.GetPlot(searchX, searchY)
+							if searchPlot ~= nil and searchPlot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+								plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false)
+								break
+							end
+						end
+					end
+				end
+			end
+		end
+		applyFoothills(iW / 2 - 5, iW / 2 + 4)
+		applyFoothills(0, 5)
+		applyFoothills(iW - 6, iW - 1)
 	end
 
 	local args = {bExpandCoasts = false};
@@ -817,6 +921,7 @@ function AddRivers()
 	-- Customization for Skirmish, to keep river starts away from buffer zone in middle columns of map, and set river "original flow direction".
 	local iW, iH = Map.GetGridSize()
 	print("Skirmish - Adding Rivers");
+	local SplitOps = Map.GetCustomOption(9)
 	local passConditions = {
 		function(plot)
 			return plot:IsHills() or plot:IsMountain();
@@ -851,8 +956,12 @@ function AddRivers()
 		for i, plot in Plots() do
 			local current_x = plot:GetX()
 			local current_y = plot:GetY()
-			if current_x < 1 or current_x >= iW - 2 or current_y < 2 or current_y >= iH - 1 then
-				-- Plot too close to edge, ignore it.
+			if current_y < 2 or current_y >= iH - 1 then
+				-- Plot too close to north/south edge, ignore it.
+			elseif SplitOps ~= 8 and (current_x < 1 or current_x >= iW - 2) then
+				-- Plot too close to east/west ocean rims, ignore it.
+			elseif SplitOps == 8 and (current_x < 4 or current_x >= iW - 4) then
+				-- Plot in wrap-front buffer, ignore it.
 			elseif current_x >= (iW / 2) - 3 and current_x <= (iW / 2) + 2 then
 				-- Plot in buffer zone, ignore it.
 			elseif (not plot:IsWater()) then
@@ -864,7 +973,25 @@ function AddRivers()
 								local start_x = inlandCorner:GetX()
 								local start_y = inlandCorner:GetY()
 								local orig_direction;
-								if start_y < iH / 2 then -- South half of map
+								if SplitOps == 8 then
+									local lakeX = iW / 4;
+									if start_x >= iW / 2 then
+										lakeX = iW * 0.75;
+									end
+									if start_y < iH / 2 then
+										if start_x < lakeX then
+											orig_direction = FlowDirectionTypes.FLOWDIRECTION_NORTHEAST;
+										else
+											orig_direction = FlowDirectionTypes.FLOWDIRECTION_NORTHWEST;
+										end
+									else
+										if start_x < lakeX then
+											orig_direction = FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST;
+										else
+											orig_direction = FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST;
+										end
+									end
+								elseif start_y < iH / 2 then -- South half of map
 									if start_x < iW / 2 then -- West half of map
 										orig_direction = FlowDirectionTypes.FLOWDIRECTION_NORTHWEST;
 									else -- East half
@@ -1300,6 +1427,21 @@ function SetDivide()
 				plot:SetTerrainType(TerrainTypes.TERRAIN_SNOW, false, false);
 			end
 		end
+	elseif SplitOps == 8 then
+		local xSnowA = math.floor(iW / 2) - 1;
+		local xSnowB = math.floor(iW / 2);
+		for y = 0, iH - 1 do
+			for _, x in ipairs({xSnowA, xSnowB}) do
+				local plot = Map.GetPlot(x, y)
+				if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+					plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+				elseif plot:IsLake() then
+					plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+				end
+				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+				plot:SetTerrainType(TerrainTypes.TERRAIN_SNOW, false, false);
+			end
+		end
 	end
 end
 
@@ -1370,6 +1512,17 @@ function StartPlotSystem()
 	if Map.GetCustomOption(9) == 4 then
 		local iW, iH = Map.GetGridSize()
 		for x = math.floor(iW / 2) - 2, (iW / 2) + 1 do
+			for y = 0, iH - 1 do
+				local plot = Map.GetPlot(x, y)
+				plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
+				plot:SetNWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
+				plot:SetNEOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
+			end
+		end
+	end
+	if Map.GetCustomOption(9) == 8 then
+		local iW, iH = Map.GetGridSize()
+		for x = math.floor(iW / 2) - 1, math.floor(iW / 2) do
 			for y = 0, iH - 1 do
 				local plot = Map.GetPlot(x, y)
 				plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
