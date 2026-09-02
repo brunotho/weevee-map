@@ -4148,7 +4148,9 @@ function AssignStartingPlots:NormalizeStartLocation(region_number)
 	print("Normalizing Region Number: ", region_number);
 	
 	local res = Map.GetCustomOption(4)
-	if res == 9 then
+	if GetResourceSetting ~= nil then
+		res = GetResourceSetting();
+	elseif res == 9 then
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
 	

@@ -315,10 +315,16 @@ function FeatureGenerator:AddAtolls()
 	if biggest_ocean ~= nil then
 		iNumBiggestOceanPlots = biggest_ocean:GetNumTiles()
 	end
-	if iNumBiggestOceanPlots <= (iW * iH) / 4 then -- No major oceans on this world.
+	if iNumBiggestOceanPlots < 6 then
 		return
 	end
 	
+	local snowBarrier = false;
+	if IsSnowBarrier ~= nil then
+		snowBarrier = IsSnowBarrier();
+	else
+		snowBarrier = (Map.GetCustomOption(9) == 8 or Map.GetCustomOption(9) == 9);
+	end
 	-- World has oceans, proceed with adding Atolls.
 	local iNumAtollsPlaced = 0;
 	local direction_types = {
@@ -357,7 +363,12 @@ function FeatureGenerator:AddAtolls()
 			if plotType == PlotTypes.PLOT_OCEAN then
 				local featureType = plot:GetFeatureType()
 				if featureType ~= FeatureTypes.FEATURE_ICE then
-					if not plot:IsLake() then
+					local waterArea = plot:Area();
+					local nWater = 0;
+					if waterArea ~= nil then
+						nWater = waterArea:GetNumTiles();
+					end
+					if nWater >= 6 and plot:IsLake() == false then
 						local terrainType = plot:GetTerrainType()
 						if terrainType == TerrainTypes.TERRAIN_COAST then
 							if plot:IsAdjacentToLand() then
@@ -370,9 +381,12 @@ function FeatureGenerator:AddAtolls()
 										local adjPlotType = adjPlot:GetPlotType()
 										if adjPlotType ~= PlotTypes.PLOT_OCEAN then -- Found land.
 											iNumLandAdjacent = iNumLandAdjacent + 1;
-											-- Avoid being adjacent to tundra, snow, or feature ice!
+											-- Avoid snow/ice. Tundra is allowed on Snow Wrap polar coasts.
 											local adjTerrainType = adjPlot:GetTerrainType()
-											if adjTerrainType == TerrainTypes.TERRAIN_TUNDRA or adjTerrainType == TerrainTypes.TERRAIN_SNOW then
+											if adjTerrainType == TerrainTypes.TERRAIN_SNOW then
+												bPlotValid = false;
+											end
+											if snowBarrier == false and adjTerrainType == TerrainTypes.TERRAIN_TUNDRA then
 												bPlotValid = false;
 											end
 											local adjFeatureType = adjPlot:GetFeatureType()
@@ -390,10 +404,19 @@ function FeatureGenerator:AddAtolls()
 										end
 									end
 								end
-								-- Only plots with a single land plot adjacent can be eligible.
-								if iNumLandAdjacent == 1 and bPlotValid == true then
-									if biggest_adj_area >= 76 then
+								-- Vanilla: exactly 1 land neighbor, and discard if that landmass is 76+ tiles
+								-- (main continent). Snow Wrap is one landmass, so that would place zero atolls.
+								local maxLandAdj = 1;
+								local skipBigLand = true;
+								if snowBarrier then
+									maxLandAdj = 3;
+									skipBigLand = false;
+								end
+								if iNumLandAdjacent >= 1 and iNumLandAdjacent <= maxLandAdj and bPlotValid == true then
+									if skipBigLand == true and biggest_adj_area >= 76 then
 										-- discard this site
+									elseif snowBarrier then
+										table.insert(temp_alpha_list, i);
 									elseif biggest_adj_area >= 41 then
 										table.insert(temp_epsilon_list, i);
 									elseif biggest_adj_area >= 17 then
@@ -404,8 +427,6 @@ function FeatureGenerator:AddAtolls()
 										table.insert(temp_beta_list, i);
 									elseif biggest_adj_area >= 1 then
 										table.insert(temp_alpha_list, i);
-									--else -- Unexpected result
-										--print("** Area Plot Count =", biggest_adj_area);
 									end
 								end
 							end
@@ -541,14 +562,6 @@ function FeatureGenerator:AddAtolls()
 		end
 	end
 	
-	--[[ Debug report
-	print("-"); print("- Atoll Target Number: ", atoll_number);
-	print("- Number of Atolls placed: ", iNumAtollsPlaced); print("-");
-	print("- Atolls placed in Alpha locations: ", i_alpha - 1);
-	print("- Atolls placed in Beta locations: ", i_beta - 1);
-	print("- Atolls placed in Gamma locations: ", i_gamma - 1);
-	print("- Atolls placed in Delta locations: ", i_delta - 1);
-	print("- Atolls placed in Epsilon locations: ", i_epsilon - 1);
-	]]--
+	print("Atolls: water=" .. tostring(iNumBiggestOceanPlots) .. " candidates=" .. tostring(table.maxn(alpha_list) + table.maxn(beta_list) + table.maxn(gamma_list) + table.maxn(delta_list) + table.maxn(epsilon_list)) .. " placed=" .. tostring(iNumAtollsPlaced));
 end
 ------------------------------------------------------------------------------

@@ -12,153 +12,90 @@ include("DEFMultilayeredFractalW");
 include("DEFFeatureGeneratorW");
 include("DEFTerrainGeneratorW");
 
+local OPT_CENTER_SPLIT = 1;
+local OPT_SNOW_BARRIER = 2;
+local OPT_FRONT_MOUNTAIN = 3;
+local SPLIT_SNOW = 1;
+local SPLIT_WRAP = 2;
+local SPLIT_NOWRAP = 3;
+local DEF_WORLD_AGE = 2;
+local DEF_TEMPERATURE = 2;
+local DEF_RAINFALL = 2;
+local DEF_RESOURCES = 4;
+local DEF_TEAM = 1;
+local DEF_FRONTLINE = 7;
+local DEF_BACK = 7;
+local DEF_MIRRORED = 1;
+local DEF_TOPBOTTOM = 7;
+local DEF_NATURAL_WONDERS = 16;
+
+------------------------------------------------------------------------------
+function GetResourceSetting()
+	return DEF_RESOURCES;
+end
 ------------------------------------------------------------------------------
 function GetMapScriptInfo()
-	local world_age, temperature, rainfall, sea_level, resources = GetCoreMapOptions()
 	return {
-		Name = "Weevee Map - v11",
+		Name = "### Weevee Map - v11",
 		Description = "HellBlazers Teamer Map combined with Skirmish. Uses Leszek Deska's mirroring algorithm. Frankensteined together by Meota.",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
-		CustomOptions = {world_age, temperature, rainfall,
-			{
-				Name = "TXT_KEY_MAP_OPTION_RESOURCES",	-- Customizing the Resource setting to Default to Strategic Balance.
-				Values = {
-					"TXT_KEY_MAP_OPTION_SPARSE",
-					"TXT_KEY_MAP_OPTION_STANDARD",
-					"TXT_KEY_MAP_OPTION_ABUNDANT",
-					"Legendary Start - Strat Balance",
-					"TXT_KEY_MAP_OPTION_STRATEGIC_BALANCE",
-					"Strategic Balance With Coal",
-					"Strategic Balance With Aluminum",
-					"Strategic Balance With Coal & Aluminum",
-					"TXT_KEY_MAP_OPTION_RANDOM",
-				},
-				DefaultValue = 5,
-				SortPriority = -95,
-			},
-			{
-				Name = "TXT_KEY_MAP_OPTION_TEAM_SETTING",
-				Values = {
-					"TXT_KEY_MAP_OPTION_START_TOGETHER",
---					"TXT_KEY_MAP_OPTION_START_SEPARATED",
-					"TXT_KEY_MAP_OPTION_START_ANYWHERE",
-				},
-				DefaultValue = 1,
-				SortPriority = 1,
-			},
-			{
-				Name = "Frontline Distance", -- 6 minimum distance a capital can spawn from the front
-				Values = {
-					"0",
-					"1",
-					"2 - Default",
-					"3",
-					"4",
-					"5",
-					"6",
-				},
-				DefaultValue = 3,
-				SortPriority = -96,
-			},
-			{
-				Name = "Back Distance", -- 7 minimum distance a capital can spawn from the back
-				Values = {
-					"0 - Default",
-					"1",
-					"2",
-					"3",
-					"4",
-					"5",
-					"6",
-					"7",
-					"8",
-					"9",
-					"10",
-				},
-				DefaultValue = 1,
-				SortPriority = -97,
-			},
-			{
-				Name = "Mirrored Map",
-				Values = {
-					"Yes",
-					"No",
-				},
-				DefaultValue = 1,
-				SortPriority = -98,
-			},
+		CustomOptions = {
 			{
 				Name = "Center Split",
 				Values = {
-					"Ocean Strip",
-					"Landbridges",
-					"Marsh",
 					"Snow",
-					"Normal Land",
-					"Skirmish",
-					"Barrier Islands",
-					"Snow Wrap",
+					"Snow v2 (wrap) - Default",
+					"Snow v2 (no wrap)",
 				},
 				DefaultValue = 1,
 				SortPriority = -99,
 			},
 			{
-				Name = "Natural Wonders", -- 10 number of natural wonders to spawn
+				Name = "Snow Barrier Width",
 				Values = {
 					"0",
-					"1",
 					"2",
-					"3",
 					"4",
-					"5",
 					"6",
-					"7",
-					"8",
-					"9",
-					"10",
-					"11",
-					"12",
-					"Random",
-					"Default",
+					"Random (2-6) - Default",
 				},
-				DefaultValue = 15,
-				SortPriority = -99,
+				DefaultValue = 5,
+				SortPriority = -98,
 			},
 			{
-				Name = "Front Mountain %", -- 11 density of mountains on the front
+				Name = "Front Mountain %",
 				Values = {
 					"20%",
 					"25%",
 					"30%",
-					"35%",	
+					"35% - Default",	
 					"40%",
 					"45%",
 					"50%",
 				},
 				DefaultValue = 4,
-				SortPriority = -99,
-			},
-			{
-				Name = "Top/Bottom distance", -- 12 distance from the edge of the map
-				Values = {
-					"0",
-					"1",
-					"2",
-					"3",
-					"4",
-					"5",
-					"6",
-					"7",
-					"8",
-					"9",
-					"10",
-				},
-				DefaultValue = 7,
-				SortPriority = -99,
+				SortPriority = -97,
 			},
 		},
 	}
+end
+------------------------------------------------------------------------------
+function IsSnowWrapX()
+	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_WRAP;
+end
+------------------------------------------------------------------------------
+function IsSnowNoWrap()
+	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_NOWRAP;
+end
+------------------------------------------------------------------------------
+function IsOldSnow()
+	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_SNOW;
+end
+------------------------------------------------------------------------------
+function IsSnowBarrier()
+	local ops = Map.GetCustomOption(OPT_CENTER_SPLIT);
+	return ops == SPLIT_WRAP or ops == SPLIT_NOWRAP;
 end
 ------------------------------------------------------------------------------
 
@@ -179,12 +116,382 @@ function GetMapInitData(worldSize)
 	--
 	local world = GameInfo.Worlds[worldSize];
 	if(world ~= nil) then
-	return {
-		Width = grid_size[1],
-		Height = grid_size[2],
-		WrapX = (Map.GetCustomOption(9) == 8),
-	};      
-     end
+		local w = grid_size[1] - Map.Rand(5, "Map Width Variance");
+		local h = grid_size[2] - Map.Rand(5, "Map Height Variance");
+		print("Map canvas:", w, "x", h, "(base", grid_size[1], "x", grid_size[2], ")");
+		return {
+			Width = w,
+			Height = h,
+			WrapX = IsSnowWrapX(),
+		};
+	end
+end
+-------------------------------------------------------------------------------
+local snowWrapWidthResolved = false;
+local snowWrapBackWidth = 0;
+local snowWrapCenterWidth = 0;
+function ResolveSnowWrapWidths()
+	if snowWrapWidthResolved then
+		return snowWrapBackWidth, snowWrapCenterWidth;
+	end
+	snowWrapWidthResolved = true;
+	local ops = Map.GetCustomOption(OPT_SNOW_BARRIER);
+	if IsSnowWrapX() == false then
+		snowWrapBackWidth = 0;
+		if ops == 5 then
+			snowWrapCenterWidth = 2 * (Map.Rand(3, "Snow Wrap Center Width") + 1);
+		else
+			snowWrapCenterWidth = (ops - 1) * 2;
+		end
+		print("Snow Barrier widths (no wrap): wrap=0 center=", snowWrapCenterWidth);
+		return snowWrapBackWidth, snowWrapCenterWidth;
+	end
+	if ops == 5 then
+		repeat
+			snowWrapBackWidth = 2 * (Map.Rand(3, "Snow Wrap Back Width") + 1);
+			snowWrapCenterWidth = 2 * (Map.Rand(3, "Snow Wrap Center Width") + 1);
+		until snowWrapBackWidth < 6 or snowWrapCenterWidth < 6;
+		print("Snow Wrap widths (random): wrap=", snowWrapBackWidth, " center=", snowWrapCenterWidth);
+	else
+		local n = (ops - 1) * 2;
+		snowWrapBackWidth = n;
+		snowWrapCenterWidth = n;
+	end
+	return snowWrapBackWidth, snowWrapCenterWidth;
+end
+------------------------------------------------------------------------------
+local climateScaleResolved = false;
+local climateScale = 0.8;
+local climateVariation = nil;
+function ResolveClimateScale()
+	if climateScaleResolved then
+		return climateScale, climateVariation;
+	end
+	climateScaleResolved = true;
+	local iW, iH = Map.GetGridSize();
+	local oneRow = 0.8 / (iH / 2);
+	climateScale = 0.8 + (Map.Rand(3, "Climate Scale") - 1) * oneRow;
+	if climateScale > 0.95 then
+		climateScale = 0.95;
+	end
+	climateVariation = Fractal.Create(iW, iH, 3, Map.GetFractalFlags(), -1, -1);
+	print("Climate scale:", climateScale);
+	return climateScale, climateVariation;
+end
+------------------------------------------------------------------------------
+function GetClimateLatitudeAtPlot(iX, iY)
+	local scale, variation = ResolveClimateScale();
+	local iW, iH = Map.GetGridSize();
+	local lat = math.abs((iH / 2) - iY) / (iH / 2);
+	lat = lat + (128 - variation:GetHeight(iX, iY)) / (255.0 * 5.0);
+	lat = scale * (math.clamp(lat, 0, 1));
+	return lat;
+end
+------------------------------------------------------------------------------
+function GetSnowWrapWaterBounds(iW)
+	local wrapN, centerN = ResolveSnowWrapWidths();
+	local wrapHalf = wrapN / 2;
+	local centerHalf = centerN / 2;
+	local mid = math.floor(iW / 2);
+	local minX = wrapHalf + 3;
+	local maxX = mid - centerHalf - 4;
+	return minX, maxX;
+end
+------------------------------------------------------------------------------
+function WaterAllowedAtX(x)
+	local iW = Map.GetGridSize();
+	local wrapN, centerN = ResolveSnowWrapWidths();
+	local wrapHalf = wrapN / 2;
+	local centerHalf = centerN / 2;
+	local mid = math.floor(iW / 2);
+	if wrapHalf > 0 then
+		if x <= (wrapHalf + 2) then
+			return false
+		end
+		if x >= (iW - wrapHalf - 3) then
+			return false
+		end
+	end
+	if centerHalf > 0 then
+		if x >= (mid - centerHalf - 3) and x <= (mid + centerHalf - 1 + 3) then
+			return false
+		end
+	end
+	return true
+end
+------------------------------------------------------------------------------
+function ScrubWaterNearSnow()
+	if IsSnowBarrier() == false then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if WaterAllowedAtX(x) == false then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:GetPlotType() == PlotTypes.PLOT_OCEAN then
+					plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+end
+------------------------------------------------------------------------------
+function GetSnowWrapColumns(iW)
+	local cols = {};
+	local wrapN, centerN = ResolveSnowWrapWidths();
+	if wrapN > 0 then
+		local half = wrapN / 2;
+		for x = 0, half - 1 do
+			table.insert(cols, x);
+		end
+		for x = iW - half, iW - 1 do
+			table.insert(cols, x);
+		end
+	end
+	if centerN > 0 then
+		local half = centerN / 2;
+		local mid = math.floor(iW / 2);
+		for x = mid - half, mid + half - 1 do
+			table.insert(cols, x);
+		end
+	end
+	return cols;
+end
+------------------------------------------------------------------------------
+function GetSnowWrapTundraColumns(iW)
+	local cols = {};
+	local wrapN, centerN = ResolveSnowWrapWidths();
+	local mid = math.floor(iW / 2);
+	if wrapN > 0 then
+		local half = wrapN / 2;
+		table.insert(cols, half);
+		table.insert(cols, iW - half - 1);
+	end
+	if centerN > 0 then
+		local half = centerN / 2;
+		table.insert(cols, mid - half - 1);
+		table.insert(cols, mid + half);
+	end
+	return cols;
+end
+------------------------------------------------------------------------------
+function GetSnowWrapLandMountainXs(iW)
+	local wrapN = ResolveSnowWrapWidths();
+	local wrapHalf = wrapN / 2;
+	local firstLand = wrapHalf + 1;
+	local xWest = 3;
+	if xWest < firstLand then
+		xWest = firstLand;
+	end
+	return xWest, iW - 1 - xWest;
+end
+------------------------------------------------------------------------------
+function ShapeNoWrapBackstrip(plotTypes, iW, iH)
+	local evenN = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
+	local oddN = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
+	local depth = 2;
+	local y = 0;
+	while y < iH do
+		local step = Map.Rand(3, "NoWrap Coast Walk") - 1;
+		depth = depth + step;
+		if depth < 1 then
+			depth = 1;
+		end
+		if depth > 3 then
+			depth = 3;
+		end
+		local x = 0;
+		while x <= 2 do
+			local i = y * iW + x + 1;
+			if x < depth then
+				plotTypes[i] = PlotTypes.PLOT_OCEAN;
+			elseif x <= 1 then
+				plotTypes[i] = PlotTypes.PLOT_LAND;
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local nIslands = 2 + Map.Rand(3, "NoWrap Back Islands");
+	local placed = 0;
+	local attempts = 0;
+	while placed < nIslands and attempts < 50 do
+		attempts = attempts + 1;
+		local ySpan = iH - 2;
+		if ySpan < 1 then
+			ySpan = 1;
+		end
+		local iy = 1 + Map.Rand(ySpan, "NoWrap Island Y");
+		local ix = Map.Rand(2, "NoWrap Island X");
+		local i = iy * iW + ix + 1;
+		if plotTypes[i] == PlotTypes.PLOT_OCEAN then
+			local adjMainland = false;
+			local dirs = evenN;
+			if iy % 2 == 1 then
+				dirs = oddN;
+			end
+			local d = 1;
+			while d <= 6 do
+				local nx = ix + dirs[d][1];
+				local ny = iy + dirs[d][2];
+				if ny >= 0 and ny < iH and nx >= 0 and nx < iW then
+					if plotTypes[ny * iW + nx + 1] ~= PlotTypes.PLOT_OCEAN then
+						if nx >= 2 then
+							adjMainland = true;
+						end
+					end
+				end
+				d = d + 1;
+			end
+			if adjMainland == false then
+				if Map.Rand(3, "NoWrap Island Hills") == 0 then
+					plotTypes[i] = PlotTypes.PLOT_HILLS;
+				else
+					plotTypes[i] = PlotTypes.PLOT_LAND;
+				end
+				placed = placed + 1;
+				if Map.Rand(2, "NoWrap Island Pair") == 0 then
+					local pd = 1 + Map.Rand(6, "NoWrap Island PairDir");
+					local px = ix + dirs[pd][1];
+					local py = iy + dirs[pd][2];
+					if py >= 1 and py < iH - 1 and px >= 0 and px <= 1 then
+						local pi = py * iW + px + 1;
+						if plotTypes[pi] == PlotTypes.PLOT_OCEAN then
+							local pairMainland = false;
+							local pdirs = evenN;
+							if py % 2 == 1 then
+								pdirs = oddN;
+							end
+							local e = 1;
+							while e <= 6 do
+								local ex = px + pdirs[e][1];
+								local ey = py + pdirs[e][2];
+								if ey >= 0 and ey < iH and ex >= 0 and ex < iW then
+									if plotTypes[ey * iW + ex + 1] ~= PlotTypes.PLOT_OCEAN then
+										if ex >= 2 then
+											pairMainland = true;
+										end
+									end
+								end
+								e = e + 1;
+							end
+							if pairMainland == false then
+								plotTypes[pi] = plotTypes[i];
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x <= 3 do
+			local mx = iW - x - 1;
+			local my = iH - y - 1;
+			plotTypes[my * iW + mx + 1] = plotTypes[y * iW + x + 1];
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+end
+-------------------------------------------------------------------------------
+local ASP_GenerateGlobalResourcePlotLists = AssignStartingPlots.GenerateGlobalResourcePlotLists;
+function AssignStartingPlots:GenerateGlobalResourcePlotLists()
+	ASP_GenerateGlobalResourcePlotLists(self);
+	if IsSnowBarrier() == false then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	for y = 0, iH - 1 do
+		for x = 0, iW - 1 do
+			local i = y * iW + x + 1;
+			if self.playerCollisionData[i] ~= true then
+				local plot = Map.GetPlot(x, y);
+				if plot:GetPlotType() == PlotTypes.PLOT_OCEAN
+					and plot:GetResourceType(-1) == -1
+					and plot:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
+					and plot:GetFeatureType() ~= self.feature_atoll
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_COAST
+					and plot:IsLake() then
+					table.insert(self.coast_list, i);
+					if plot:IsAdjacentToLand() and isMiddle(x) then
+						table.insert(self.front_coast_list, i);
+					end
+				end
+			end
+		end
+	end
+	self.coast_list = GetShuffledCopyOfTable(self.coast_list);
+	self.front_coast_list = GetShuffledCopyOfTable(self.front_coast_list);
+	self.coast_next_to_land_list = GetShuffledCopyOfTable(self.coast_next_to_land_list);
+end
+------------------------------------------------------------------------------
+local ASP_ExaminePlotForNaturalWondersEligibility = AssignStartingPlots.ExaminePlotForNaturalWondersEligibility;
+function AssignStartingPlots:ExaminePlotForNaturalWondersEligibility(x, y)
+	if ASP_ExaminePlotForNaturalWondersEligibility(self, x, y) == false then
+		return false
+	end
+	if IsSnowBarrier() then
+		local iW = Map.GetGridSize();
+		local snowCols = GetSnowWrapColumns(iW);
+		local tundraCols = GetSnowWrapTundraColumns(iW);
+		local i = 1;
+		while snowCols[i] ~= nil do
+			if x == snowCols[i] then
+				return false
+			end
+			i = i + 1;
+		end
+		i = 1;
+		while tundraCols[i] ~= nil do
+			if x == tundraCols[i] then
+				return false
+			end
+			i = i + 1;
+		end
+	end
+	return true
+end
+------------------------------------------------------------------------------
+function PurgeNearStartLakeFish()
+	if IsSnowBarrier() == false then
+		return
+	end
+	local fishID = GameInfoTypes["RESOURCE_FISH"];
+	if fishID == nil then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local starts = {};
+	for i = 0, GameDefines.MAX_MAJOR_CIVS - 1 do
+		local player = Players[i];
+		if player ~= nil and player:IsAlive() and player:GetStartingPlot() ~= nil then
+			table.insert(starts, player:GetStartingPlot());
+		end
+	end
+	for y = 0, iH - 1 do
+		for x = 0, iW - 1 do
+			local plot = Map.GetPlot(x, y);
+			if plot:GetResourceType(-1) == fishID and plot:IsWater() then
+				local area = plot:Area();
+				if area ~= nil and area:GetNumTiles() <= 6 then
+					for _, startPlot in ipairs(starts) do
+						if Map.PlotDistance(x, y, startPlot:GetX(), startPlot:GetY()) <= 4 then
+							plot:SetResourceType(-1);
+							break
+						end
+					end
+				end
+			end
+		end
+	end
 end
 -------------------------------------------------------------------------------
 function MultilayeredFractal:GeneratePlotsByRegion()
@@ -194,12 +501,12 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 	-- This implementation is specific to West vs East.
 	local iW, iH = Map.GetGridSize();
 	local fracFlags = {};
-	local SplitOps = Map.GetCustomOption(9);
+	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT);
 
 	-- Fill all rows with land plots.
 	self.wholeworldPlotTypes = table.fill(PlotTypes.PLOT_LAND, iW * iH);
 
-	if SplitOps == 1 then
+	if false then -- Ocean Strip
 	
 		-- Add strip of ocean to middle of map --- Always start with this for civ placements
 		for y = 0, iH - 1 do
@@ -214,7 +521,7 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 				--end
 			end
 		end
-	elseif SplitOps == 2 then
+	elseif false then -- Landbridges
 		
 		-- Add strip of ocean to middle of map --- Always start with this for civ placements
 		for y = 4, iH - 5 do
@@ -230,7 +537,7 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			end
 		end
 	end
-	if SplitOps == 7 then
+	if false then -- Barrier Islands
 		
 		-- Add strip of ocean to middle of map --- Always start with this for civ placements
 		for y = 0, iH - 1 do
@@ -283,7 +590,7 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[i_innerst_plot] = PlotTypes.PLOT_OCEAN;
 		end
 	end
-	if SplitOps ~= 8 then
+	if not IsSnowWrapX() then
 		for x = 0, 0 do
 			for y = 1, iH - 2 do
 				local i = y * iW + x + 1;
@@ -305,20 +612,27 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 		local west_shuffled = GetShuffledCopyOfTable(west_half)
 		local iNumMountainsPerColumn = math.max(math.floor(iH * 0.33), math.floor((iH / 3) - 1));
 		local x_west = 3;
+		if IsSnowNoWrap() then
+			x_west = 2;
+		end
 		for loop = 1, iNumMountainsPerColumn do
 			local y_west = west_shuffled[loop];
 			local i_west_plot = y_west * iW + x_west + 1;
 			self.wholeworldPlotTypes[i_west_plot] = PlotTypes.PLOT_OCEAN;
 		end
 		-- Add strips of ocean to the world borders.
+		local rimW = 2;
+		if IsSnowNoWrap() then
+			rimW = 1;
+		end
 		for y = 0, iH do
-			for x = 0, 2 do
+			for x = 0, rimW do
 				local plotIndex = y * iW + x + 1;
 				self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
 			end
 		end
 		for y = 0, iH do
-			for x = iW - 3, iW do
+			for x = iW - 1 - rimW, iW do
 				local plotIndex = y * iW + x + 1;
 				self.wholeworldPlotTypes[plotIndex] = PlotTypes.PLOT_OCEAN;
 			end
@@ -340,14 +654,14 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 
 
 	-- Land and water are set. Now apply hills and mountains.
-	local world_age = Map.GetCustomOption(1)
+	local world_age = DEF_WORLD_AGE;
 	if world_age == 4 then
 		world_age = 1 + Map.Rand(3, "Random World Age - Lua");
 	end
 	local args = {world_age = world_age};
 	self:ApplyTectonics(args)
 	
-	if SplitOps == 6 then
+	if false then -- Skirmish
 		for x = iW / 2 - 2, iW / 2 + 1 do
 			for y = 1, iH - 2 do
 				local i = y * iW + x + 1;
@@ -377,7 +691,7 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[i_east_plot] = PlotTypes.PLOT_MOUNTAIN;
 		end
 	end
-	if SplitOps == 4 then
+	if IsOldSnow() then
 		for x = iW / 2 - 4, iW / 2 + 3 do
 			for y = 0, iH - 1 do
 				local i = y * iW + x + 1;
@@ -392,7 +706,7 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 		local west_shuffled = GetShuffledCopyOfTable(west_half)
 		local east_shuffled = GetShuffledCopyOfTable(east_half)
 
-		local mountainOps = Map.GetCustomOption(11)
+		local mountainOps = Map.GetCustomOption(OPT_FRONT_MOUNTAIN)
 		local mountainDensity = .20 + .05 * mountainOps
 
 		local iNumMountainsPerColumn = math.floor(iH * mountainDensity);
@@ -405,12 +719,12 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[i_east_plot] = PlotTypes.PLOT_MOUNTAIN;
 		end
 	end
-	if SplitOps == 8 then
+	if IsSnowBarrier() then
 		local west_half = {};
 		for loop = 1, iH - 2 do
 			table.insert(west_half, loop);
 		end
-		local mountainOps = Map.GetCustomOption(11)
+		local mountainOps = Map.GetCustomOption(OPT_FRONT_MOUNTAIN)
 		local mountainDensity = .20 + .05 * mountainOps
 		local iNumMountainsPerColumn = math.floor(iH * mountainDensity);
 
@@ -422,54 +736,278 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			self.wholeworldPlotTypes[y_east * iW + x_east + 1] = PlotTypes.PLOT_MOUNTAIN;
 		end
 
-		local wrap_shuffled = GetShuffledCopyOfTable(west_half)
-		local x_wrap_west, x_wrap_east = 3, iW - 4;
-		for loop = 1, iNumMountainsPerColumn do
-			local y_west, y_east = wrap_shuffled[loop], iH - 1 - wrap_shuffled[loop];
-			self.wholeworldPlotTypes[y_west * iW + x_wrap_west + 1] = PlotTypes.PLOT_MOUNTAIN;
-			self.wholeworldPlotTypes[y_east * iW + x_wrap_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+		if IsSnowWrapX() then
+			local wrap_shuffled = GetShuffledCopyOfTable(west_half)
+			local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
+			for loop = 1, iNumMountainsPerColumn do
+				local y_west, y_east = wrap_shuffled[loop], iH - 1 - wrap_shuffled[loop];
+				self.wholeworldPlotTypes[y_west * iW + x_wrap_west + 1] = PlotTypes.PLOT_MOUNTAIN;
+				self.wholeworldPlotTypes[y_east * iW + x_wrap_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+			end
 		end
 
-		local lakeSize = 9;
-		local seedX = math.floor(iW / 4);
-		local seedY = math.floor(iH / 2);
-		local minX = 6;
-		local maxX = math.floor(iW / 2) - 6;
-		if seedX < minX then
-			seedX = minX;
+		-- Interior lakes + polar water. At least 3 columns from both snow seams.
+		local minX, maxX = GetSnowWrapWaterBounds(iW);
+		local function hexNeighbors(x, y)
+			if y % 2 == 0 then
+				return {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
+			end
+			return {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
 		end
-		if seedX > maxX then
-			seedX = maxX;
+		local polarIslandPlots = {};
+		local polarRadius = 0;
+		local polarCap = 0;
+		local polarInland = 0;
+		if minX <= maxX then
+			local polarX = math.floor((minX + maxX) / 2);
+			polarCap = Map.Rand(3, "Snow Wrap Polar Cap");
+			if polarCap == 0 then
+				polarCap = 0;
+			else
+				polarRadius = 3 + Map.Rand(3, "Snow Wrap Polar Inland");
+				local maxIn = math.floor(iH / 4);
+				if polarRadius > maxIn then
+					polarRadius = maxIn;
+				end
+				if polarRadius < 3 then
+					polarRadius = 3;
+				end
+				local polarY = 0;
+				local yLo = 0;
+				local yHi = polarRadius;
+				if polarCap == 2 then
+					polarY = iH - 1;
+					yLo = iH - 1 - polarRadius;
+					yHi = iH - 1;
+				end
+				local maxHalfW = math.min(polarX - minX, maxX - polarX);
+				if maxHalfW < 1 then
+					polarCap = 0;
+				else
+					local style = Map.Rand(3, "Snow Wrap Polar Shape");
+					local halfW = 1;
+					local inland = polarRadius;
+					if style == 0 then
+						halfW = 1 + Map.Rand(2, "Snow Wrap Polar SharpW");
+						if halfW > maxHalfW then
+							halfW = maxHalfW;
+						end
+					elseif style == 2 then
+						halfW = maxHalfW;
+						inland = 2 + Map.Rand(2, "Snow Wrap Polar WideIn");
+						if polarCap == 1 then
+							yHi = inland;
+						else
+							yLo = iH - 1 - inland;
+						end
+					else
+						halfW = math.max(2, math.floor(maxHalfW / 2));
+					end
+					local seedX = polarX;
+					if seedX < minX then
+						seedX = minX;
+					end
+					if seedX > maxX then
+						seedX = maxX;
+					end
+					local blob = {};
+					table.insert(blob, {seedX, polarY});
+					self.wholeworldPlotTypes[polarY * iW + seedX + 1] = PlotTypes.PLOT_OCEAN;
+					local nBlob = 1;
+					local target = 12 + Map.Rand(9, "Snow Wrap Polar Target");
+					local step = 0;
+					while nBlob < target do
+						step = step + 1;
+						if step > 80 then
+							break
+						end
+						local candidates = {};
+						local pIndex = 1;
+						while pIndex <= nBlob do
+							local p = blob[pIndex];
+							local dirs = hexNeighbors(p[1], p[2]);
+							local dIndex = 1;
+							while dIndex <= 6 do
+								local d = dirs[dIndex];
+								local nx = p[1] + d[1];
+								local ny = p[2] + d[2];
+								local dx = nx - seedX;
+								if dx < 0 then
+									dx = 0 - dx;
+								end
+								if nx >= minX and nx <= maxX and ny >= yLo and ny <= yHi and dx <= halfW then
+									local idx = ny * iW + nx + 1;
+									if self.wholeworldPlotTypes[idx] ~= PlotTypes.PLOT_OCEAN then
+										table.insert(candidates, {nx, ny, idx});
+									end
+								end
+								dIndex = dIndex + 1;
+							end
+							pIndex = pIndex + 1;
+						end
+						local nCands = table.maxn(candidates);
+						if nCands < 1 then
+							break
+						end
+						local pick = candidates[Map.Rand(nCands, "Snow Wrap Polar Grow") + 1];
+						self.wholeworldPlotTypes[pick[3]] = PlotTypes.PLOT_OCEAN;
+						table.insert(blob, {pick[1], pick[2]});
+						nBlob = nBlob + 1;
+					end
+					if nBlob >= 6 then
+						local iIsland = 2;
+						while iIsland <= nBlob do
+							local t = blob[iIsland];
+							local surrounded = true;
+							local dirs = hexNeighbors(t[1], t[2]);
+							local dIndex = 1;
+							while dIndex <= 6 do
+								local d = dirs[dIndex];
+								local nx = t[1] + d[1];
+								local ny = t[2] + d[2];
+								if nx >= 0 and nx < iW and ny >= 0 and ny < iH then
+									if self.wholeworldPlotTypes[ny * iW + nx + 1] ~= PlotTypes.PLOT_OCEAN then
+										surrounded = false;
+									end
+								end
+								dIndex = dIndex + 1;
+							end
+							if surrounded == true then
+								self.wholeworldPlotTypes[t[2] * iW + t[1] + 1] = PlotTypes.PLOT_HILLS;
+								table.insert(polarIslandPlots, {t[1], t[2]});
+								break
+							end
+							iIsland = iIsland + 1;
+						end
+					end
+					polarInland = inland;
+					print("Snow Wrap polar cap=" .. tostring(polarCap) .. " tiles=" .. tostring(nBlob));
+				end
+			end
 		end
-		local blob = {{seedX, seedY}};
-		self.wholeworldPlotTypes[seedY * iW + seedX + 1] = PlotTypes.PLOT_OCEAN;
-		local dirs = {{0, 1}, {0, -1}, {1, 0}, {-1, 0}, {1, 1}, {-1, 1}, {1, -1}, {-1, -1}};
-		while #blob < lakeSize do
-			local candidates = {};
-			for _, p in ipairs(blob) do
-				for _, d in ipairs(dirs) do
-					local nx = p[1] + d[1];
-					local ny = p[2] + d[2];
-					if nx >= minX and nx <= maxX and ny >= 3 and ny <= iH - 4 then
-						local idx = ny * iW + nx + 1;
-						if self.wholeworldPlotTypes[idx] ~= PlotTypes.PLOT_OCEAN then
-							table.insert(candidates, {nx, ny, idx});
+		-- Keep interior lakes off the polar cap that exists.
+		local minY = 3;
+		local maxY = iH - 4;
+		if polarCap == 1 and polarInland > 0 then
+			minY = polarInland + 2;
+		elseif polarCap == 2 and polarInland > 0 then
+			maxY = iH - 1 - (polarInland + 2);
+		end
+		local function inLakeRect(x, y)
+			return x >= minX and x <= maxX and y >= minY and y <= maxY;
+		end
+		local function neighborsFit(x, y)
+			for _, d in ipairs(hexNeighbors(x, y)) do
+				if not inLakeRect(x + d[1], y + d[2]) then
+					return false
+				end
+			end
+			return true
+		end
+		if minX <= maxX and minY <= maxY then
+			local nBodies = Map.Rand(4, "Snow Wrap Lake Count");
+			for n = 1, nBodies do
+				local lakeSize = 3 + Map.Rand(8, "Snow Wrap Lake Size");
+				local circular = (Map.Rand(2, "Snow Wrap Lake Shape") == 0);
+				local wantIsland = circular and lakeSize >= 6 and (Map.Rand(2, "Snow Wrap Lake Island") == 0);
+				local seedX, seedY;
+				for attempt = 1, 40 do
+					local tx = minX + Map.Rand(maxX - minX + 1, "Snow Wrap Lake SeedX");
+					local ty = minY + Map.Rand(maxY - minY + 1, "Snow Wrap Lake SeedY");
+					local tidx = ty * iW + tx + 1;
+					if self.wholeworldPlotTypes[tidx] ~= PlotTypes.PLOT_OCEAN then
+						if (not wantIsland) or neighborsFit(tx, ty) then
+							seedX, seedY = tx, ty;
+							break
+						end
+					end
+				end
+				if seedX == nil and wantIsland then
+					wantIsland = false;
+					for attempt = 1, 40 do
+						local tx = minX + Map.Rand(maxX - minX + 1, "Snow Wrap Lake SeedX");
+						local ty = minY + Map.Rand(maxY - minY + 1, "Snow Wrap Lake SeedY");
+						local tidx = ty * iW + tx + 1;
+						if self.wholeworldPlotTypes[tidx] ~= PlotTypes.PLOT_OCEAN then
+							seedX, seedY = tx, ty;
+							break
+						end
+					end
+				end
+				if seedX ~= nil then
+					if circular then
+						local visited = {};
+						local queue = {{seedX, seedY}};
+						visited[seedY * iW + seedX] = true;
+						local qi = 1;
+						local painted = 0;
+						while qi <= #queue and painted < lakeSize do
+							local cx = queue[qi][1];
+							local cy = queue[qi][2];
+							qi = qi + 1;
+							local skipSeed = wantIsland and cx == seedX and cy == seedY;
+							if inLakeRect(cx, cy) then
+								local idx = cy * iW + cx + 1;
+								if (not skipSeed) and self.wholeworldPlotTypes[idx] ~= PlotTypes.PLOT_OCEAN then
+									self.wholeworldPlotTypes[idx] = PlotTypes.PLOT_OCEAN;
+									painted = painted + 1;
+								end
+								for _, d in ipairs(hexNeighbors(cx, cy)) do
+									local nx = cx + d[1];
+									local ny = cy + d[2];
+									local nkey = ny * iW + nx;
+									if inLakeRect(nx, ny) and visited[nkey] == nil then
+										visited[nkey] = true;
+										table.insert(queue, {nx, ny});
+									end
+								end
+							end
+						end
+					else
+						local blob = {{seedX, seedY}};
+						self.wholeworldPlotTypes[seedY * iW + seedX + 1] = PlotTypes.PLOT_OCEAN;
+						while #blob < lakeSize do
+							local candidates = {};
+							for _, p in ipairs(blob) do
+								for _, d in ipairs(hexNeighbors(p[1], p[2])) do
+									local nx = p[1] + d[1];
+									local ny = p[2] + d[2];
+									if inLakeRect(nx, ny) then
+										local idx = ny * iW + nx + 1;
+										if self.wholeworldPlotTypes[idx] ~= PlotTypes.PLOT_OCEAN then
+											table.insert(candidates, {nx, ny, idx});
+										end
+									end
+								end
+							end
+							if #candidates == 0 then
+								break
+							end
+							local pick = candidates[Map.Rand(#candidates, "Snow Wrap Lake") + 1];
+							self.wholeworldPlotTypes[pick[3]] = PlotTypes.PLOT_OCEAN;
+							table.insert(blob, {pick[1], pick[2]});
 						end
 					end
 				end
 			end
-			if #candidates == 0 then
-				break
-			end
-			local pick = candidates[Map.Rand(#candidates, "Snow Wrap Lake") + 1];
-			self.wholeworldPlotTypes[pick[3]] = PlotTypes.PLOT_OCEAN;
-			table.insert(blob, {pick[1], pick[2]});
 		end
-		for _, p in ipairs(blob) do
+		for y = 0, iH - 1 do
+			for x = 0, math.floor(iW / 2) - 1 do
+				if self.wholeworldPlotTypes[y * iW + x + 1] == PlotTypes.PLOT_OCEAN then
+					local mx = iW - x - 1;
+					local my = iH - y - 1;
+					self.wholeworldPlotTypes[my * iW + mx + 1] = PlotTypes.PLOT_OCEAN;
+				end
+			end
+		end
+		for _, p in ipairs(polarIslandPlots) do
 			local mx = iW - p[1] - 1;
 			local my = iH - p[2] - 1;
-			self.wholeworldPlotTypes[my * iW + mx + 1] = PlotTypes.PLOT_OCEAN;
+			self.wholeworldPlotTypes[my * iW + mx + 1] = self.wholeworldPlotTypes[p[2] * iW + p[1] + 1];
 		end
+	end
+	if IsSnowNoWrap() then
+		ShapeNoWrapBackstrip(self.wholeworldPlotTypes, iW, iH);
 	end
 	-- Plot Type generation completed. Return global plot array.
 	return self.wholeworldPlotTypes
@@ -480,11 +1018,11 @@ function GeneratePlotTypes()
 
 	local layered_world = MultilayeredFractal.Create();
 	local plot_list = layered_world:GeneratePlotsByRegion();
-	local SplitOps = Map.GetCustomOption(9);
+	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT);
 
 	SetPlotTypes(plot_list);
 
-	if SplitOps == 4 then
+	if IsOldSnow() then
 		local plot_list = layered_world:GeneratePlotsByRegion();
 		local iW, iH = Map.GetGridSize();
 		local firstRingYIsEven = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
@@ -518,7 +1056,7 @@ function GeneratePlotTypes()
 			end
 		end
 	end
-	if SplitOps == 6 then
+	if false then -- Skirmish foothills
 		local iW, iH = Map.GetGridSize();
 		local firstRingYIsEven = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
 		local firstRingYIsOdd = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
@@ -551,7 +1089,7 @@ function GeneratePlotTypes()
 			end
 		end
 	end
-	if SplitOps == 8 then
+	if IsSnowBarrier() then
 		local iW, iH = Map.GetGridSize();
 		local firstRingYIsEven = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
 		local firstRingYIsOdd = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
@@ -583,8 +1121,11 @@ function GeneratePlotTypes()
 			end
 		end
 		applyFoothills(iW / 2 - 5, iW / 2 + 4)
-		applyFoothills(0, 5)
-		applyFoothills(iW - 6, iW - 1)
+		if IsSnowWrapX() then
+			local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
+			applyFoothills(x_wrap_west - 1, x_wrap_west + 1)
+			applyFoothills(x_wrap_east - 1, x_wrap_east + 1)
+		end
 	end
 
 	local args = {bExpandCoasts = false};
@@ -594,17 +1135,14 @@ end
 
 ----------------------------------------------------------------------------------
 function TerrainGenerator:GetLatitudeAtPlot(iX, iY)
-	local lat = math.abs((self.iHeight / 2) - iY) / (self.iHeight / 2);
-	lat = lat + (128 - self.variation:GetHeight(iX, iY))/(255.0 * 5.0);
-	lat = 0.8 * (math.clamp(lat, 0, 1));
-	return lat;
+	return GetClimateLatitudeAtPlot(iX, iY);
 end
 ----------------------------------------------------------------------------------
 function GenerateTerrain()
 	print("Generating Terrain (Lua West vs East) ...");
 	
 	-- Get Temperature setting input by user.
-	local temp = Map.GetCustomOption(2)
+	local temp = DEF_TEMPERATURE;
 	if temp == 4 then
 		temp = 1 + Map.Rand(3, "Random Temperature - Lua");
 	end
@@ -622,22 +1160,53 @@ end
 
 ------------------------------------------------------------------------------
 function FeatureGenerator:GetLatitudeAtPlot(iX, iY)
-	local lat = math.abs((self.iGridH/2) - iY)/(self.iGridH/2);
-
-	local adjusted_lat = 0.8 * lat;
-	
-	return adjusted_lat
+	return GetClimateLatitudeAtPlot(iX, iY);
 end
 ------------------------------------------------------------------------------
 function FeatureGenerator:AddIceAtPlot(plot, iX, iY, lat)
 	return
 end
 ------------------------------------------------------------------------------
+function AddLakes()
+	print("Map Generation - Adding Lakes");
+	local numLakesAdded = 0;
+	local lakePlotRand = 80;
+	for i, plot in Plots() do
+		if not plot:IsWater() then
+			if not plot:IsCoastalLand() then
+				if not plot:IsRiver() then
+					local r = Map.Rand(lakePlotRand, "MapGenerator AddLakes");
+					if r == 0 then
+						local allow = true;
+						if IsSnowBarrier() then
+							if WaterAllowedAtX(plot:GetX()) == false then
+								allow = false;
+							end
+						end
+						if allow == true then
+							plot:SetArea(-1);
+							plot:SetPlotType(PlotTypes.PLOT_OCEAN);
+							numLakesAdded = numLakesAdded + 1;
+						end
+					end
+				end
+			end
+		end
+	end
+	ScrubWaterNearSnow();
+	if numLakesAdded > 0 then
+		print(tostring(numLakesAdded).." lakes added")
+		Map.CalculateAreas();
+	elseif IsSnowBarrier() then
+		Map.CalculateAreas();
+	end
+end
+------------------------------------------------------------------------------
 function AddFeatures()
 	print("Adding Features (Lua West vs East) ...");
 
 	-- Get Rainfall setting input by user.
-	local rain = Map.GetCustomOption(3)
+	local rain = DEF_RAINFALL;
 	if rain == 4 then
 		rain = 1 + Map.Rand(3, "Random Rainfall - Lua");
 	end
@@ -645,7 +1214,8 @@ function AddFeatures()
 	local args = {rainfall = rain}
 	local featuregen = FeatureGenerator.Create(args);
 
-	featuregen:AddFeatures(false);
+	-- false = flatten coastal mountains to hills. Snow Wrap keeps peaks on water.
+	featuregen:AddFeatures(IsSnowWrapX());
 end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
@@ -921,7 +1491,7 @@ function AddRivers()
 	-- Customization for Skirmish, to keep river starts away from buffer zone in middle columns of map, and set river "original flow direction".
 	local iW, iH = Map.GetGridSize()
 	print("Skirmish - Adding Rivers");
-	local SplitOps = Map.GetCustomOption(9)
+	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT)
 	local passConditions = {
 		function(plot)
 			return plot:IsHills() or plot:IsMountain();
@@ -958,9 +1528,11 @@ function AddRivers()
 			local current_y = plot:GetY()
 			if current_y < 2 or current_y >= iH - 1 then
 				-- Plot too close to north/south edge, ignore it.
-			elseif SplitOps ~= 8 and (current_x < 1 or current_x >= iW - 2) then
+			elseif IsSnowNoWrap() and (current_x < 2 or current_x >= iW - 2) then
+				-- Plot too close to east/west 2-col ocean rims, ignore it.
+			elseif IsSnowWrapX() == false and (current_x < 1 or current_x >= iW - 2) then
 				-- Plot too close to east/west ocean rims, ignore it.
-			elseif SplitOps == 8 and (current_x < 4 or current_x >= iW - 4) then
+			elseif IsSnowWrapX() and (current_x < 4 or current_x >= iW - 4) then
 				-- Plot in wrap-front buffer, ignore it.
 			elseif current_x >= (iW / 2) - 3 and current_x <= (iW / 2) + 2 then
 				-- Plot in buffer zone, ignore it.
@@ -973,7 +1545,7 @@ function AddRivers()
 								local start_x = inlandCorner:GetX()
 								local start_y = inlandCorner:GetY()
 								local orig_direction;
-								if SplitOps == 8 then
+								if IsSnowBarrier() then
 									local lakeX = iW / 4;
 									if start_x >= iW / 2 then
 										lakeX = iW * 0.75;
@@ -1020,20 +1592,20 @@ function AssignStartingPlots:GenerateRegions(args)
 	-- This version is tailored for handling two-teams play.
 	local args = args or {};
 	local iW, iH = Map.GetGridSize();
-	local res = Map.GetCustomOption(4)
+	local res = DEF_RESOURCES;
 	if res == 9 then
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
 
-	local setback = Map.GetCustomOption(6)-1;
+	local setback = DEF_FRONTLINE-1;
 
-	local setforward = Map.GetCustomOption(7)-1;
+	local setforward = DEF_BACK-1;
 
 	local setrange = setforward + setback;
 
 	print("Moveback: ", setback);
 
-	local setmiddle = Map.GetCustomOption(12)-1;
+	local setmiddle = DEF_TOPBOTTOM-1;
 
 	self.resource_setting = res; -- Each map script has to pass in parameter for Resource setting chosen by user.
 	self.method = 3; -- Flag the map as using a Rectangular division method.
@@ -1048,7 +1620,7 @@ function AssignStartingPlots:GenerateRegions(args)
 	print("-"); print("Teams:", iNumTeams);
 
 	-- Fetch team setting.
-	local team_setting = Map.GetCustomOption(5)
+	local team_setting = DEF_TEAM
 
 	-- If two teams are present, use team-oriented handling of start points, one team west, one east.
 	if iNumTeams == 2 and team_setting == 1 then
@@ -1067,6 +1639,18 @@ function AssignStartingPlots:GenerateRegions(args)
 		self.inhabited_SouthY = 0 + setmiddle;
 		self.inhabited_Width = (math.floor(iW / 2)) - setrange;
 		self.inhabited_Height = iH - 2 * setmiddle;
+		if IsSnowBarrier() then
+			local wrapN, centerN = ResolveSnowWrapWidths();
+			local wrapHalf = wrapN / 2;
+			local centerHalf = centerN / 2;
+			local mid = math.floor(iW / 2);
+			local backPad = wrapHalf - 1;
+			if backPad < 0 then
+				backPad = 0;
+			end
+			self.inhabited_WestX = setforward + backPad;
+			self.inhabited_Width = (mid - centerHalf) - setback - 1 - self.inhabited_WestX + 1;
+		end
 		-- Obtain "Start Placement Fertility" inside the rectangle.
 		-- Data returned is: fertility table, sum of all fertility, plot count.
 		local fert_table, fertCount, plotCount = self:MeasureStartPlacementFertilityInRectangle(self.inhabited_WestX, 
@@ -1082,6 +1666,18 @@ function AssignStartingPlots:GenerateRegions(args)
 		self.inhabited_SouthY = 0 + setmiddle;
 		self.inhabited_Width = math.floor(iW / 2) - setrange;
 		self.inhabited_Height = iH - 2 * setmiddle;
+		if IsSnowBarrier() then
+			local wrapN, centerN = ResolveSnowWrapWidths();
+			local wrapHalf = wrapN / 2;
+			local centerHalf = centerN / 2;
+			local mid = math.floor(iW / 2);
+			self.inhabited_WestX = (mid + centerHalf) + setback;
+			local lastEast = iW - setforward - 1;
+			if wrapHalf > 1 then
+				lastEast = iW - setforward - wrapHalf;
+			end
+			self.inhabited_Width = lastEast - self.inhabited_WestX + 1;
+		end
 		-- Obtain "Start Placement Fertility" inside the rectangle.
 		-- Data returned is: fertility table, sum of all fertility, plot count.
 		local fert_table, fertCount, plotCount = self:MeasureStartPlacementFertilityInRectangle(self.inhabited_WestX, 
@@ -1229,7 +1825,7 @@ function AssignStartingPlots:BalanceAndAssign()
 	end
 
 	-- Assign Civs to start plots.
-	local team_setting = Map.GetCustomOption(5)
+	local team_setting = DEF_TEAM
 	if iNumTeams == 2 and team_setting == 1 then
 		-- Two teams, place one in the west half, other in east -- even if team membership totals are uneven.
 		print("-"); print("This is a team game with two teams! Place one team in West, other in East."); print("-");
@@ -1344,10 +1940,10 @@ end
 ------------------------------------------------------------------------------------------------------------------------------------------------------------
 function SetDivide()
 
-	local SplitOps = Map.GetCustomOption(9);
+	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT);
 	local iW, iH = Map.GetGridSize();
 
-	if SplitOps == 2 then
+	if false then -- Landbridges
 		-- check landbridges have no lakes or moutains
 
 		--check bottom land bridge
@@ -1391,7 +1987,7 @@ function SetDivide()
 				end
 			end
 		end
-	elseif SplitOps == 3 then
+	elseif false then -- Marsh
 		--Marsh
 		
 		-- Add strip of marsh to middle of map
@@ -1403,7 +1999,7 @@ function SetDivide()
 				plot:SetFeatureType(FeatureTypes.FEATURE_MARSH, -1);
 			end
 		end
-	elseif SplitOps == 4 then
+	elseif IsOldSnow() then
 		--Snow
 
 		-- Add strip of tundra to middle of map
@@ -1427,19 +2023,43 @@ function SetDivide()
 				plot:SetTerrainType(TerrainTypes.TERRAIN_SNOW, false, false);
 			end
 		end
-	elseif SplitOps == 8 then
-		local xSnowA = math.floor(iW / 2) - 1;
-		local xSnowB = math.floor(iW / 2);
+	elseif IsSnowBarrier() then
+		local tundraCols = GetSnowWrapTundraColumns(iW);
+		local snowCols = GetSnowWrapColumns(iW);
+		local mirrored = (DEF_MIRRORED == 1);
+		local snowPlots = {};
 		for y = 0, iH - 1 do
-			for _, x in ipairs({xSnowA, xSnowB}) do
+			for _, x in ipairs(tundraCols) do
 				local plot = Map.GetPlot(x, y)
-				if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
-					plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
-				elseif plot:IsLake() then
+				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+				plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+			end
+			for _, x in ipairs(snowCols) do
+				local plot = Map.GetPlot(x, y)
+				if plot:IsWater() then
 					plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 				end
 				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
 				plot:SetTerrainType(TerrainTypes.TERRAIN_SNOW, false, false);
+				if (not mirrored) or (x <= iW * 0.5) then
+					table.insert(snowPlots, plot);
+				end
+			end
+		end
+		local shuffled = GetShuffledCopyOfTable(snowPlots);
+		local n = #shuffled;
+		local nMountain = math.floor(n * 0.01 + 0.5);
+		local nHill = math.floor(n * 0.19 + 0.5);
+		if nMountain + nHill > n then
+			nHill = n - nMountain;
+		end
+		for i, plot in ipairs(shuffled) do
+			if i <= nMountain then
+				plot:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
+			elseif i <= nMountain + nHill then
+				plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+			else
+				plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 			end
 		end
 	end
@@ -1461,7 +2081,7 @@ end
 ------------------------------------------------------------------------------
 function StartPlotSystem()
 	-- Get Resources setting input by user.
-	local res = Map.GetCustomOption(4)
+	local res = DEF_RESOURCES;
 	if res == 9 then
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
@@ -1490,8 +2110,10 @@ function StartPlotSystem()
 	--start_plot_database:PlaceNaturalWonders()
 
 	print("Placing Natural Wonders.");
-	local wonders = Map.GetCustomOption(10)
-	if wonders == 14 then
+	local wonders = DEF_NATURAL_WONDERS
+	if wonders == 16 then
+		wonders = 2 + Map.Rand(4, "Number of Wonders 2-5 - Lua");
+	elseif wonders == 14 then
 		wonders = Map.Rand(13, "Number of Wonders To Spawn - Lua");
 	else
 		wonders = wonders - 1;
@@ -1509,7 +2131,7 @@ function StartPlotSystem()
 	print("Placing Resources and City States.");
 	start_plot_database:PlaceResourcesAndCityStates()
 	
-	if Map.GetCustomOption(9) == 4 then
+	if IsOldSnow() then
 		local iW, iH = Map.GetGridSize()
 		for x = math.floor(iW / 2) - 2, (iW / 2) + 1 do
 			for y = 0, iH - 1 do
@@ -1520,9 +2142,10 @@ function StartPlotSystem()
 			end
 		end
 	end
-	if Map.GetCustomOption(9) == 8 then
+	if IsSnowBarrier() then
 		local iW, iH = Map.GetGridSize()
-		for x = math.floor(iW / 2) - 1, math.floor(iW / 2) do
+		local snowCols = GetSnowWrapColumns(iW);
+		for _, x in ipairs(snowCols) do
 			for y = 0, iH - 1 do
 				local plot = Map.GetPlot(x, y)
 				plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
@@ -1531,7 +2154,8 @@ function StartPlotSystem()
 			end
 		end
 	end
-	if Map.GetCustomOption(8) == 1 then
+	PurgeNearStartLakeFish();
+	if DEF_MIRRORED == 1 then
 	------------------------------------------------------------------------------
 	----------------------- INCLUDE getMirroredPlot()-----------------------------
 	----------------- Copyright 2010  (c)  Leszek Deska --------------------------
