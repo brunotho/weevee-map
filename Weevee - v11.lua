@@ -3713,14 +3713,8 @@ function StripBarrierResources()
 	local uranID = GameInfoTypes["RESOURCE_URANIUM"];
 	local iW, iH = Map.GetGridSize();
 	local cols = GetSnowWrapColumns(iW);
-	local tundraCols = GetSnowWrapTundraColumns(iW);
-	local ci = 1;
-	while ci <= #tundraCols do
-		table.insert(cols, tundraCols[ci]);
-		ci = ci + 1;
-	end
 	local n = 0;
-	ci = 1;
+	local ci = 1;
 	while ci <= #cols do
 		local x = cols[ci];
 		local y = 0;
@@ -3816,7 +3810,7 @@ end
 ------------------------------------------------------------------------------
 function PlaceDesertTundraFrontResources()
 	local cfg = GetBarrierConfig();
-	if cfg == nil or cfg.kind ~= "desert" then
+	if cfg == nil then
 		return
 	end
 	local iW, iH = Map.GetGridSize();
@@ -3825,39 +3819,11 @@ function PlaceDesertTundraFrontResources()
 		return
 	end
 	local mirrored = (DEF_MIRRORED == 1);
-	local placedLux = {};
-	local y = 0;
-	while y < iH do
-		local x = 0;
-		local maxX = iW - 1;
-		if mirrored then
-			maxX = math.floor(iW / 2);
-		end
-		while x <= maxX do
-			local plot = Map.GetPlot(x, y);
-			if plot ~= nil then
-				local res = plot:GetResourceType(-1);
-				if res ~= nil and res ~= -1 then
-					placedLux[res] = true;
-				end
-			end
-			x = x + 1;
-		end
-		y = y + 1;
-	end
 	local unusedLux = {};
-	for res in GameInfo.Resources() do
-		if res.Happiness ~= nil and res.Happiness > 0 and placedLux[res.ID] ~= true then
-			table.insert(unusedLux, res.ID);
-		end
-	end
-	unusedLux = GetShuffledCopyOfTable(unusedLux);
 	local allPlots = {};
-	local bandPlots = {};
 	local bi = 1;
 	while bi <= #bands do
 		local plots = CollectTundraFrontPlots(bands[bi], iW, iH);
-		bandPlots[bi] = plots;
 		local p = 1;
 		while p <= #plots do
 			table.insert(allPlots, plots[p]);
@@ -3865,23 +3831,54 @@ function PlaceDesertTundraFrontResources()
 		end
 		bi = bi + 1;
 	end
-	local nLuxWant = Map.Rand(3, "Desert Front Unique Lux Count");
-	local luxPlaced = 0;
-	local shuffledPlots = GetShuffledCopyOfTable(allPlots);
-	local luxI = 1;
-	while luxI <= #unusedLux and luxPlaced < nLuxWant do
-		local luxID = unusedLux[luxI];
-		local p = 1;
-		while p <= #shuffledPlots do
-			local plot = shuffledPlots[p];
-			if plot:GetResourceType(-1) == -1 and plot:CanHaveResource(luxID) then
-				plot:SetResourceType(luxID, 1);
-				luxPlaced = luxPlaced + 1;
-				break
+	if cfg.kind == "desert" then
+		local placedLux = {};
+		local y = 0;
+		while y < iH do
+			local x = 0;
+			local maxX = iW - 1;
+			if mirrored then
+				maxX = math.floor(iW / 2);
 			end
-			p = p + 1;
+			while x <= maxX do
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil then
+					local res = plot:GetResourceType(-1);
+					if res ~= nil and res ~= -1 then
+						placedLux[res] = true;
+					end
+				end
+				x = x + 1;
+			end
+			y = y + 1;
 		end
-		luxI = luxI + 1;
+		for res in GameInfo.Resources() do
+			if res.Happiness ~= nil and res.Happiness > 0 and placedLux[res.ID] ~= true then
+				table.insert(unusedLux, res.ID);
+			end
+		end
+		unusedLux = GetShuffledCopyOfTable(unusedLux);
+	end
+	local nLuxWant = 0;
+	local luxPlaced = 0;
+	if cfg.kind == "desert" then
+		nLuxWant = Map.Rand(3, "Desert Front Unique Lux Count");
+		local shuffledPlots = GetShuffledCopyOfTable(allPlots);
+		local luxI = 1;
+		while luxI <= #unusedLux and luxPlaced < nLuxWant do
+			local luxID = unusedLux[luxI];
+			local p = 1;
+			while p <= #shuffledPlots do
+				local plot = shuffledPlots[p];
+				if plot:GetResourceType(-1) == -1 and plot:CanHaveResource(luxID) then
+					plot:SetResourceType(luxID, 1);
+					luxPlaced = luxPlaced + 1;
+					break
+				end
+				p = p + 1;
+			end
+			luxI = luxI + 1;
+		end
 	end
 	local bonusIDs = {};
 	for res in GameInfo.Resources() do
@@ -3903,7 +3900,7 @@ function PlaceDesertTundraFrontResources()
 	while bi <= #bands do
 		local plots = CollectTundraFrontPlots(bands[bi], iW, iH);
 		plots = GetShuffledCopyOfTable(plots);
-		local nWant = 8 + Map.Rand(5, "Desert Front Bonus Count");
+		local nWant = 8 + Map.Rand(5, "Front Bonus Count");
 		local placed = 0;
 		local p = 1;
 		while p <= #plots and placed < nWant do
@@ -3919,7 +3916,7 @@ function PlaceDesertTundraFrontResources()
 				k = k + 1;
 			end
 			if nFit > 0 then
-				local pick = fit[Map.Rand(nFit, "Desert Front Bonus Pick") + 1];
+				local pick = fit[Map.Rand(nFit, "Front Bonus Pick") + 1];
 				local amt = 1;
 				if pick == ironID or pick == horseID or pick == oilID or pick == coalID or pick == alumID or pick == uranID then
 					amt = 2;
@@ -3932,7 +3929,7 @@ function PlaceDesertTundraFrontResources()
 		end
 		bi = bi + 1;
 	end
-	print("Desert tundra front: lux=", luxPlaced, "/", nLuxWant, " bonus=", bonusPlaced, " bands=", #bands);
+	print("Front band resources: lux=", luxPlaced, "/", nLuxWant, " bonus=", bonusPlaced, " bands=", #bands);
 end
 ------------------------------------------------------------------------------
 function PlaceDesertMainlandResourceBoost()
