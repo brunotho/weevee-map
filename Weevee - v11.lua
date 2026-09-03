@@ -14,13 +14,17 @@ include("DEFTerrainGeneratorW");
 
 local OPT_CENTER_SPLIT = 1;
 local OPT_SNOW_BARRIER = 2;
-local OPT_FRONT_MOUNTAIN = 3;
+local OPT_WRAP = 3;
+local OPT_FRONT_MOUNTAIN = 4;
 local SPLIT_SNOW = 1;
-local SPLIT_WRAP = 2;
-local SPLIT_NOWRAP = 3;
-local SPLIT_DESERT_WRAP = 4;
-local SPLIT_DESERT_NOWRAP = 5;
+local SPLIT_SNOW_V2 = 2;
+local SPLIT_DESERT = 3;
+local SPLIT_WASTELAND = 4;
+local SPLIT_WETLAND = 5;
 local SPLIT_RANDOM = 6;
+local WRAP_NO = 1;
+local WRAP_YES = 2;
+local WRAP_RANDOM = 3;
 local DEF_WORLD_AGE = 2;
 local DEF_TEMPERATURE = 2;
 local DEF_RAINFALL = 2;
@@ -39,7 +43,7 @@ end
 ------------------------------------------------------------------------------
 function GetMapScriptInfo()
 	return {
-		Name = "[COLOR_HIGHLIGHT_TEXT] ## Weevee Map - v11 [ENDCOLOR]",
+		Name = "[COLOR_HIGHLIGHT_TEXT]Weevee Map - v11 [ENDCOLOR]",
 		Description = "",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
@@ -48,10 +52,10 @@ function GetMapScriptInfo()
 				Name = "[COLOR_HIGHLIGHT_TEXT]Barrier Terrain[ENDCOLOR]",
 				Values = {
 					"[COLOR_HIGHLIGHT_TEXT]Snow (mostly legacy)[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Snow v2 (wrap)[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT]Snow v2 (no wrap)[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT]Desert v2 (wrap)[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT]Desert v2 (no wrap)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Snow v2[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Desert[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Wasteland[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Wetland[ENDCOLOR]",
 					"[COLOR_HIGHLIGHT_TEXT]Random[ENDCOLOR]"
 				},
 				DefaultValue = 1,
@@ -62,12 +66,22 @@ function GetMapScriptInfo()
 				Values = {
 					"[COLOR_HIGHLIGHT_TEXT]0[ENDCOLOR]",
 					"[COLOR_HIGHLIGHT_TEXT]2[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT]4[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] 4[ENDCOLOR]",
 					"[COLOR_HIGHLIGHT_TEXT]6[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Random (2-6)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Random (2-6)[ENDCOLOR]",
 				},
-				DefaultValue = 4,
+				DefaultValue = 3,
 				SortPriority = -98,
+			},
+			{
+				Name = "[COLOR_HIGHLIGHT_TEXT]World Wrap[ENDCOLOR]",
+				Values = {
+					"[COLOR_HIGHLIGHT_TEXT]No wrap[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Wrap[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Random[ENDCOLOR]",
+				},
+				DefaultValue = 1,
+				SortPriority = -97,
 			},
 			{
 				Name = "[COLOR_HIGHLIGHT_TEXT]Front Mountain %[ENDCOLOR]",
@@ -81,7 +95,7 @@ function GetMapScriptInfo()
 					"[COLOR_HIGHLIGHT_TEXT]50%[ENDCOLOR]",
 				},
 				DefaultValue = 4,
-				SortPriority = -97,
+				SortPriority = -96,
 			},
 		},
 	}
@@ -89,7 +103,7 @@ end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 local barrierSplitResolved = false;
-local barrierSplit = SPLIT_WRAP;
+local barrierSplit = SPLIT_SNOW;
 function ResolveBarrierSplit()
 	if barrierSplitResolved then
 		return barrierSplit;
@@ -105,12 +119,35 @@ function ResolveBarrierSplit()
 	return barrierSplit;
 end
 ------------------------------------------------------------------------------
+local barrierWrapResolved = false;
+local barrierWrap = false;
+function ResolveWrap()
+	if barrierWrapResolved then
+		return barrierWrap;
+	end
+	barrierWrapResolved = true;
+	if ResolveBarrierSplit() == SPLIT_SNOW then
+		barrierWrap = false;
+		print("Barrier wrap: ignored (legacy snow)");
+		return barrierWrap;
+	end
+	local ops = Map.GetCustomOption(OPT_WRAP);
+	if ops == WRAP_RANDOM then
+		barrierWrap = (Map.Rand(2, "Barrier Wrap Random") == 1);
+		print("Barrier wrap random:", barrierWrap);
+	else
+		barrierWrap = (ops == WRAP_YES);
+	end
+	return barrierWrap;
+end
+------------------------------------------------------------------------------
 function GetBarrierConfig()
 	local ops = ResolveBarrierSplit();
-	if ops == SPLIT_WRAP or ops == SPLIT_NOWRAP then
+	local wrap = ResolveWrap();
+	if ops == SPLIT_SNOW_V2 then
 		return {
 			kind = "snow",
-			wrap = (ops == SPLIT_WRAP),
+			wrap = wrap,
 			mountainPct = 2,
 			hillPct = 19,
 			iceLakePermille = 2,
@@ -119,16 +156,46 @@ function GetBarrierConfig()
 			chaoticMountains = false,
 		};
 	end
-	if ops == SPLIT_DESERT_WRAP or ops == SPLIT_DESERT_NOWRAP then
+	if ops == SPLIT_DESERT then
 		return {
 			kind = "desert",
-			wrap = (ops == SPLIT_DESERT_WRAP),
+			wrap = wrap,
 			mountainPct = 5,
 			hillPct = 20,
 			iceLakePermille = 0,
 			forestPct = 2,
 			oasisPctOfFlat = 5,
 			chaoticMountains = true,
+		};
+	end
+	if ops == SPLIT_WASTELAND then
+		return {
+			kind = "wasteland",
+			wrap = wrap,
+			mountainPct = 8,
+			hillPct = 20,
+			iceLakePermille = 0,
+			forestPct = 0,
+			oasisPctOfFlat = 0,
+			chaoticMountains = true,
+			falloutBarrierPct = 30,
+			falloutPlayableNearPct = 4,
+			falloutPlayableFarPct = 14,
+		};
+	end
+	if ops == SPLIT_WETLAND then
+		return {
+			kind = "wetland",
+			wrap = wrap,
+			mountainPct = 8,
+			hillPct = 20,
+			iceLakePermille = 0,
+			forestPct = 0,
+			oasisPctOfFlat = 0,
+			chaoticMountains = true,
+			marshBarrierPct = 24,
+			jungleBarrierPct = 18,
+			forestBarrierPct = 16,
 		};
 	end
 	return nil;
@@ -138,10 +205,19 @@ function BarrierTerrainType(cfg)
 	if cfg.kind == "desert" then
 		return TerrainTypes.TERRAIN_DESERT;
 	end
+	if cfg.kind == "wasteland" then
+		return TerrainTypes.TERRAIN_TUNDRA;
+	end
+	if cfg.kind == "wetland" then
+		return TerrainTypes.TERRAIN_GRASS;
+	end
 	return TerrainTypes.TERRAIN_SNOW;
 end
 ------------------------------------------------------------------------------
 function BarrierTransitionType(cfg)
+	if cfg.kind == "wasteland" then
+		return TerrainTypes.TERRAIN_SNOW;
+	end
 	return TerrainTypes.TERRAIN_TUNDRA;
 end
 ------------------------------------------------------------------------------
@@ -167,6 +243,7 @@ end
 -------------------------------------------------------------------------------
 function GetMapInitData(worldSize)
 	ResolveBarrierSplit();
+	ResolveWrap();
 	-- This function can reset map grid sizes or world wrap settings.
 	--
 	-- East vs West is an extremely compact multiplayer map type.
@@ -647,6 +724,62 @@ function PurgeNearStartLakeFish()
 			end
 		end
 	end
+end
+------------------------------------------------------------------------------
+function IsCappedSeaResource(res)
+	if res == nil or res == -1 then
+		return false
+	end
+	if res == GameInfoTypes["RESOURCE_FISH"] then
+		return true
+	end
+	if res == GameInfoTypes["RESOURCE_PEARLS"] then
+		return true
+	end
+	if res == GameInfoTypes["RESOURCE_WHALE"] then
+		return true
+	end
+	if res == GameInfoTypes["RESOURCE_CORAL"] then
+		return true
+	end
+	if res == GameInfoTypes["RESOURCE_CRAB"] then
+		return true
+	end
+	return false
+end
+------------------------------------------------------------------------------
+function CapSeaResources()
+	local cap = 17;
+	local iW, iH = Map.GetGridSize();
+	local maxX = iW;
+	if DEF_MIRRORED == 1 then
+		maxX = iW * 0.5;
+	end
+	local plots = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x <= maxX do
+			local plot = Map.GetPlot(x, y);
+			if plot ~= nil and plot:IsWater() and IsCappedSeaResource(plot:GetResourceType(-1)) then
+				table.insert(plots, plot);
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local n = #plots;
+	if n <= cap then
+		print("Sea resources (pre-mirror):", n);
+		return
+	end
+	local shuffled = GetShuffledCopyOfTable(plots);
+	local i = cap + 1;
+	while i <= n do
+		shuffled[i]:SetResourceType(-1);
+		i = i + 1;
+	end
+	print("Sea resources (pre-mirror) capped:", n, "->", cap);
 end
 -------------------------------------------------------------------------------
 function MultilayeredFractal:GeneratePlotsByRegion()
@@ -1332,6 +1465,22 @@ function GenerateTerrain()
 		args.fGrassLatitude = 0.26;
 		args.fDesertBottomLatitude = 0.66;
 		args.fDesertTopLatitude = 1.05;
+	elseif cfg ~= nil and cfg.kind == "wasteland" then
+		args.fSnowLatitude = 1.1;
+		args.fTundraLatitude = 0.0;
+		args.iDesertPercent = 0;
+		args.iPlainsPercent = 0;
+		args.fGrassLatitude = 0.0;
+		args.fDesertBottomLatitude = 1.1;
+		args.fDesertTopLatitude = 1.1;
+	elseif cfg ~= nil and cfg.kind == "wetland" then
+		args.fSnowLatitude = 1.1;
+		args.fTundraLatitude = 1.1;
+		args.iDesertPercent = 10;
+		args.iPlainsPercent = 32;
+		args.fGrassLatitude = 0.34;
+		args.fDesertBottomLatitude = 0.48;
+		args.fDesertTopLatitude = 0.92;
 	end
 	local terraingen = TerrainGenerator.Create(args);
 
@@ -1350,6 +1499,63 @@ end
 ------------------------------------------------------------------------------
 function FeatureGenerator:AddIceAtPlot(plot, iX, iY, lat)
 	return
+end
+------------------------------------------------------------------------------
+function FeatureGenerator:AddForestsAtPlot(plot, iX, iY, lat)
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		if (self.forests:GetHeight(iX, iY) >= self.iForestLevel) or (self.forestclumps:GetHeight(iX, iY) >= self.iClumpLevel) then
+			if plot:CanHaveFeature(self.featureForest) then
+				plot:SetFeatureType(self.featureForest, -1)
+			end
+		end
+		return
+	end
+	if (self.forests:GetHeight(iX, iY) >= self.iForestLevel) or (self.forestclumps:GetHeight(iX, iY) >= self.iClumpLevel) then
+		local t = plot:GetTerrainType();
+		if t ~= TerrainTypes.TERRAIN_GRASS and t ~= TerrainTypes.TERRAIN_PLAINS then
+			return
+		end
+		if plot:IsWater() then
+			return
+		end
+		if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+			return
+		end
+		if plot:GetFeatureType() ~= FeatureTypes.NO_FEATURE then
+			return
+		end
+		plot:SetFeatureType(self.featureForest, -1)
+	end
+end
+------------------------------------------------------------------------------
+function FeatureGenerator:AdjustTerrainTypes()
+	local cfg = GetBarrierConfig();
+	local softenArctic = true;
+	if cfg ~= nil and cfg.kind == "wasteland" then
+		softenArctic = false;
+	end
+	local width = self.iGridW - 1;
+	local height = self.iGridH - 1;
+	local y = 0;
+	while y <= height do
+		local x = 0;
+		while x <= width do
+			local plot = Map.GetPlot(x, y);
+			if plot:GetFeatureType() == self.featureJungle then
+				plot:SetTerrainType(self.terrainPlains, false, true)
+			elseif softenArctic and plot:IsRiver() then
+				local terrainType = plot:GetTerrainType();
+				if terrainType == self.terrainTundra then
+					plot:SetTerrainType(self.terrainPlains, false, true)
+				elseif terrainType == self.terrainIce then
+					plot:SetTerrainType(self.terrainTundra, false, true)
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
 end
 ------------------------------------------------------------------------------
 function AddLakes()
@@ -1684,9 +1890,22 @@ function AddFeatures()
 		args.iForestPercent = 10;
 		args.fMarshPercent = 2;
 		args.iOasisPercent = 12;
+	elseif cfg ~= nil and cfg.kind == "wasteland" then
+		args.iJunglePercent = 0;
+		args.iJungleFactor = 5;
+		args.iForestPercent = 52;
+		args.fMarshPercent = 1;
+		args.iOasisPercent = 0;
+	elseif cfg ~= nil and cfg.kind == "wetland" then
+		args.iJunglePercent = 50;
+		args.iJungleFactor = 2;
+		args.iForestPercent = 34;
+		args.fMarshPercent = 12;
+		args.iOasisPercent = 2;
 	end
 	local featuregen = FeatureGenerator.Create(args);
 
+	AddWastelandWaterLayout();
 	-- false = flatten coastal mountains to hills. Snow Wrap keeps peaks on water.
 	featuregen:AddFeatures(IsSnowWrapX());
 	AddDesertJungleBlob();
@@ -2557,6 +2776,13 @@ function SetDivide()
 						else
 							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 						end
+						if cfg.kind == "wetland" then
+							if Map.Rand(100, "Wetland Barrier Terrain") < 20 then
+								plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+							else
+								plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+							end
+						end
 					end
 				end
 			end
@@ -2708,11 +2934,382 @@ function AddBarrierOases()
 	print("Barrier oases:", placed, "/", n);
 end
 ------------------------------------------------------------------------------
-function PurgeDesertBarrierResources()
+local wastelandWaterDist = {};
+function AddWastelandWaterLayout()
+	wastelandWaterDist = {};
 	local cfg = GetBarrierConfig();
-	if cfg == nil or cfg.kind ~= "desert" then
+	if cfg == nil or cfg.kind ~= "wasteland" then
 		return
 	end
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local tundraCols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #tundraCols do
+		skip[tundraCols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local INF = 99;
+	local dist = {};
+	local qx = {};
+	local qy = {};
+	local qn = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local i = y * iW + x + 1;
+			dist[i] = INF;
+			if ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() then
+					dist[i] = 0;
+					qn = qn + 1;
+					qx[qn] = x;
+					qy[qn] = y;
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local qi = 1;
+	while qi <= qn do
+		local cx = qx[qi];
+		local cy = qy[qi];
+		local cd = dist[cy * iW + cx + 1];
+		qi = qi + 1;
+		local ddir = 0;
+		while ddir < DirectionTypes.NUM_DIRECTION_TYPES do
+			local adj = PlotDirNoXWrap(cx, cy, ddir);
+			if adj ~= nil then
+				local ax = adj:GetX();
+				local ay = adj:GetY();
+				if ((not mirrored) or (ax <= iW * 0.5)) then
+					local ai = ay * iW + ax + 1;
+					if dist[ai] > cd + 1 then
+						dist[ai] = cd + 1;
+						qn = qn + 1;
+						qx[qn] = ax;
+						qy[qn] = ay;
+					end
+				end
+			end
+			ddir = ddir + 1;
+		end
+	end
+	local maxDist = 0;
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN then
+					local i = y * iW + x + 1;
+					if dist[i] < INF and dist[i] > maxDist then
+						maxDist = dist[i];
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local desertCut = maxDist - 1;
+	if desertCut < 3 then
+		desertCut = 3;
+	end
+	local rimFrac = Fractal.Create(iW, iH, 5, Map.GetFractalFlags(), -1, -1);
+	local rimH3 = rimFrac:GetHeight(95);
+	local rimH1 = rimFrac:GetHeight(80);
+	local nFertile = 0;
+	local nDesert = 0;
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local i = y * iW + x + 1;
+			wastelandWaterDist[i] = dist[i];
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN then
+					local d = dist[i];
+					local rh = rimFrac:GetHeight(x, y);
+					local rimW = 2;
+					if rh >= rimH3 then
+						rimW = 3;
+					elseif rh >= rimH1 then
+						rimW = 1;
+					end
+					if d <= rimW then
+						if d <= 1 then
+							plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+						elseif Map.Rand(100, "Wasteland Rim Plains") < 35 then
+							plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+						else
+							plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+						end
+						nFertile = nFertile + 1;
+					elseif maxDist >= 3 and d >= desertCut then
+						local nearSep = false;
+						local si = 1;
+						while si <= #tundraCols do
+							local dx = x - tundraCols[si];
+							if dx < 0 then
+								dx = 0 - dx;
+							end
+							if dx < 3 then
+								nearSep = true;
+								break
+							end
+							si = si + 1;
+						end
+						if nearSep then
+							plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+						else
+							plot:SetTerrainType(TerrainTypes.TERRAIN_DESERT, false, false);
+							nDesert = nDesert + 1;
+						end
+					else
+						plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Wasteland water layout fertile:", nFertile, " desert:", nDesert, " maxDist:", maxDist);
+end
+------------------------------------------------------------------------------
+function CountFeatureNeighbors(plot, featureType)
+	local n = 0;
+	local d = 0;
+	while d < DirectionTypes.NUM_DIRECTION_TYPES do
+		local adj = PlotDirNoXWrap(plot:GetX(), plot:GetY(), d);
+		if adj ~= nil and adj:GetFeatureType() == featureType then
+			n = n + 1;
+		end
+		d = d + 1;
+	end
+	return n;
+end
+------------------------------------------------------------------------------
+function PlaceClusteredFeature(remaining, featureType, pct, randName)
+	local n = #remaining;
+	if n < 1 or pct < 1 then
+		return 0, n
+	end
+	local target = math.floor(n * (pct / 100) + 0.5);
+	local placed = 0;
+	while placed < target and #remaining > 0 do
+		local totalWeight = 0;
+		local i = 1;
+		while i <= #remaining do
+			local neigh = CountFeatureNeighbors(remaining[i], featureType);
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			totalWeight = totalWeight + w;
+			i = i + 1;
+		end
+		if totalWeight < 1 then
+			break
+		end
+		local roll = Map.Rand(totalWeight, randName);
+		i = 1;
+		while i <= #remaining do
+			local neigh = CountFeatureNeighbors(remaining[i], featureType);
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			if roll < w then
+				remaining[i]:SetFeatureType(featureType, -1);
+				table.remove(remaining, i);
+				placed = placed + 1;
+				break
+			end
+			roll = roll - w;
+			i = i + 1;
+		end
+	end
+	return placed, n
+end
+------------------------------------------------------------------------------
+function IsNearAnyStart(x, y, starts, dist)
+	local i = 1;
+	while i <= #starts do
+		if Map.PlotDistance(x, y, starts[i]:GetX(), starts[i]:GetY()) <= dist then
+			return true
+		end
+		i = i + 1;
+	end
+	return false
+end
+------------------------------------------------------------------------------
+function AddWastelandFallout()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local falloutType = FeatureTypes.FEATURE_FALLOUT;
+	if falloutType == nil then
+		falloutType = GameInfoTypes["FEATURE_FALLOUT"];
+	end
+	if falloutType == nil then
+		print("Wasteland fallout: FEATURE_FALLOUT missing");
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local barrierCol = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		barrierCol[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local starts = {};
+	local pi = 0;
+	while pi < GameDefines.MAX_MAJOR_CIVS do
+		local player = Players[pi];
+		if player ~= nil and player:IsAlive() and player:GetStartingPlot() ~= nil then
+			table.insert(starts, player:GetStartingPlot());
+		end
+		pi = pi + 1;
+	end
+	local barrierPlots = {};
+	local nearPlots = {};
+	local farPlots = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if (not mirrored) or (x <= iW * 0.5) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
+					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
+					and plot:GetResourceType(-1) == -1 then
+					if barrierCol[x] == true then
+						table.insert(barrierPlots, plot);
+					elseif skip[x] ~= true and IsNearAnyStart(x, y, starts, 3) == false then
+						local d = wastelandWaterDist[y * iW + x + 1];
+						if d ~= nil and d <= 2 then
+							table.insert(nearPlots, plot);
+						else
+							table.insert(farPlots, plot);
+						end
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local bPlaced, bN = PlaceClusteredFeature(barrierPlots, falloutType, cfg.falloutBarrierPct, "Wasteland Barrier Fallout");
+	local nPlaced, nN = PlaceClusteredFeature(nearPlots, falloutType, cfg.falloutPlayableNearPct, "Wasteland Near Fallout");
+	local fPlaced, fN = PlaceClusteredFeature(farPlots, falloutType, cfg.falloutPlayableFarPct, "Wasteland Far Fallout");
+	print("Wasteland fallout barrier:", bPlaced, "/", bN, " near:", nPlaced, "/", nN, " far:", fPlaced, "/", fN);
+end
+------------------------------------------------------------------------------
+function AddWetlandBarrierFeatures()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wetland" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local barrierCol = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		barrierCol[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local marshPlots = {};
+	local coverPlots = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if barrierCol[x] == true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
+					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
+					and plot:GetResourceType(-1) == -1 then
+					if plot:GetPlotType() == PlotTypes.PLOT_LAND then
+						table.insert(marshPlots, plot);
+					end
+					table.insert(coverPlots, plot);
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local mPlaced, mN = PlaceClusteredFeature(marshPlots, FeatureTypes.FEATURE_MARSH, cfg.marshBarrierPct, "Wetland Barrier Marsh");
+	local junglePlots = {};
+	local i = 1;
+	while i <= #coverPlots do
+		if coverPlots[i]:GetFeatureType() == FeatureTypes.NO_FEATURE then
+			table.insert(junglePlots, coverPlots[i]);
+		end
+		i = i + 1;
+	end
+	local jPlaced, jN = PlaceClusteredFeature(junglePlots, FeatureTypes.FEATURE_JUNGLE, cfg.jungleBarrierPct, "Wetland Barrier Jungle");
+	local ji = 1;
+	while ji <= #coverPlots do
+		if coverPlots[ji]:GetFeatureType() == FeatureTypes.FEATURE_JUNGLE then
+			coverPlots[ji]:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+		end
+		ji = ji + 1;
+	end
+	local forestPlots = {};
+	i = 1;
+	while i <= #coverPlots do
+		if coverPlots[i]:GetFeatureType() == FeatureTypes.NO_FEATURE then
+			table.insert(forestPlots, coverPlots[i]);
+		end
+		i = i + 1;
+	end
+	local fPlaced, fN = PlaceClusteredFeature(forestPlots, FeatureTypes.FEATURE_FOREST, cfg.forestBarrierPct, "Wetland Barrier Forest");
+	print("Wetland barrier marsh:", mPlaced, "/", mN, " jungle:", jPlaced, "/", jN, " forest:", fPlaced, "/", fN);
+end
+------------------------------------------------------------------------------
+function StripBarrierResources()
+	local cfg = GetBarrierConfig();
+	if cfg == nil then
+		return
+	end
+	local oilID = GameInfoTypes["RESOURCE_OIL"];
+	local alumID = GameInfoTypes["RESOURCE_ALUMINUM"];
+	local uranID = GameInfoTypes["RESOURCE_URANIUM"];
 	local iW, iH = Map.GetGridSize();
 	local cols = GetSnowWrapColumns(iW);
 	local tundraCols = GetSnowWrapTundraColumns(iW);
@@ -2728,15 +3325,18 @@ function PurgeDesertBarrierResources()
 		local y = 0;
 		while y < iH do
 			local plot = Map.GetPlot(x, y);
-			if plot ~= nil and plot:GetResourceType(-1) ~= -1 then
-				plot:SetResourceType(-1);
-				n = n + 1;
+			if plot ~= nil then
+				local res = plot:GetResourceType(-1);
+				if res ~= -1 and res ~= oilID and res ~= alumID and res ~= uranID then
+					plot:SetResourceType(-1);
+					n = n + 1;
+				end
 			end
 			y = y + 1;
 		end
 		ci = ci + 1;
 	end
-	print("Desert barrier resources purged:", n);
+	print("Barrier resources stripped:", n);
 end
 ------------------------------------------------------------------------------
 function PlaceDesertMainlandResourceBoost()
@@ -2888,10 +3488,12 @@ function StartPlotSystem()
 	print("Placing Resources and City States.");
 	start_plot_database:PlaceResourcesAndCityStates()
 
-	PurgeDesertBarrierResources();
+	StripBarrierResources();
 	PlaceDesertMainlandResourceBoost();
 	AddSnowForests();
 	AddBarrierOases();
+	AddWastelandFallout();
+	AddWetlandBarrierFeatures();
 	
 	if IsOldSnow() or IsSnowBarrier() then
 		local iW, iH = Map.GetGridSize()
@@ -2906,6 +3508,7 @@ function StartPlotSystem()
 		end
 	end
 	PurgeNearStartLakeFish();
+	CapSeaResources();
 	if DEF_MIRRORED == 1 then
 	------------------------------------------------------------------------------
 	----------------------- INCLUDE getMirroredPlot()-----------------------------
