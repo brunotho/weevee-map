@@ -18,6 +18,9 @@ local OPT_FRONT_MOUNTAIN = 3;
 local SPLIT_SNOW = 1;
 local SPLIT_WRAP = 2;
 local SPLIT_NOWRAP = 3;
+local SPLIT_DESERT_WRAP = 4;
+local SPLIT_DESERT_NOWRAP = 5;
+local SPLIT_RANDOM = 6;
 local DEF_WORLD_AGE = 2;
 local DEF_TEMPERATURE = 2;
 local DEF_RAINFALL = 2;
@@ -36,43 +39,46 @@ end
 ------------------------------------------------------------------------------
 function GetMapScriptInfo()
 	return {
-		Name = "### Weevee Map - v11",
-		Description = "HellBlazers Teamer Map combined with Skirmish. Uses Leszek Deska's mirroring algorithm. Frankensteined together by Meota.",
+		Name = "[COLOR_HIGHLIGHT_TEXT] ## Weevee Map - v11 [ENDCOLOR]",
+		Description = "",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
 		CustomOptions = {
 			{
-				Name = "Center Split",
+				Name = "[COLOR_HIGHLIGHT_TEXT]Barrier Terrain[ENDCOLOR]",
 				Values = {
-					"Snow",
-					"Snow v2 (wrap) - Default",
-					"Snow v2 (no wrap)",
+					"[COLOR_HIGHLIGHT_TEXT]Snow (mostly legacy)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Snow v2 (wrap)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Snow v2 (no wrap)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Desert v2 (wrap)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Desert v2 (no wrap)[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Random[ENDCOLOR]"
 				},
 				DefaultValue = 1,
 				SortPriority = -99,
 			},
 			{
-				Name = "Snow Barrier Width",
+				Name = "[COLOR_HIGHLIGHT_TEXT]Barrier Width[ENDCOLOR]",
 				Values = {
-					"0",
-					"2",
-					"4",
-					"6",
-					"Random (2-6) - Default",
+					"[COLOR_HIGHLIGHT_TEXT]0[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]2[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]4[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]6[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Random (2-6)[ENDCOLOR]",
 				},
-				DefaultValue = 5,
+				DefaultValue = 4,
 				SortPriority = -98,
 			},
 			{
-				Name = "Front Mountain %",
+				Name = "[COLOR_HIGHLIGHT_TEXT]Front Mountain %[ENDCOLOR]",
 				Values = {
-					"20%",
-					"25%",
-					"30%",
-					"35% - Default",	
-					"40%",
-					"45%",
-					"50%",
+					"[COLOR_HIGHLIGHT_TEXT]20%[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]25%[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]30%[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] 35%[ENDCOLOR]",	
+					"[COLOR_HIGHLIGHT_TEXT]40%[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]45%[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]50%[ENDCOLOR]",
 				},
 				DefaultValue = 4,
 				SortPriority = -97,
@@ -81,26 +87,86 @@ function GetMapScriptInfo()
 	}
 end
 ------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+local barrierSplitResolved = false;
+local barrierSplit = SPLIT_WRAP;
+function ResolveBarrierSplit()
+	if barrierSplitResolved then
+		return barrierSplit;
+	end
+	barrierSplitResolved = true;
+	local ops = Map.GetCustomOption(OPT_CENTER_SPLIT);
+	if ops == SPLIT_RANDOM then
+		barrierSplit = 1 + Map.Rand(SPLIT_RANDOM - 1, "Barrier Terrain Random");
+		print("Barrier Terrain random:", barrierSplit);
+	else
+		barrierSplit = ops;
+	end
+	return barrierSplit;
+end
+------------------------------------------------------------------------------
+function GetBarrierConfig()
+	local ops = ResolveBarrierSplit();
+	if ops == SPLIT_WRAP or ops == SPLIT_NOWRAP then
+		return {
+			kind = "snow",
+			wrap = (ops == SPLIT_WRAP),
+			mountainPct = 2,
+			hillPct = 19,
+			iceLakePermille = 2,
+			forestPct = 10,
+			oasisPctOfFlat = 0,
+			chaoticMountains = false,
+		};
+	end
+	if ops == SPLIT_DESERT_WRAP or ops == SPLIT_DESERT_NOWRAP then
+		return {
+			kind = "desert",
+			wrap = (ops == SPLIT_DESERT_WRAP),
+			mountainPct = 5,
+			hillPct = 20,
+			iceLakePermille = 0,
+			forestPct = 2,
+			oasisPctOfFlat = 5,
+			chaoticMountains = true,
+		};
+	end
+	return nil;
+end
+------------------------------------------------------------------------------
+function BarrierTerrainType(cfg)
+	if cfg.kind == "desert" then
+		return TerrainTypes.TERRAIN_DESERT;
+	end
+	return TerrainTypes.TERRAIN_SNOW;
+end
+------------------------------------------------------------------------------
+function BarrierTransitionType(cfg)
+	return TerrainTypes.TERRAIN_TUNDRA;
+end
+------------------------------------------------------------------------------
 function IsSnowWrapX()
-	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_WRAP;
+	local cfg = GetBarrierConfig();
+	return cfg ~= nil and cfg.wrap == true;
 end
 ------------------------------------------------------------------------------
 function IsSnowNoWrap()
-	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_NOWRAP;
+	local cfg = GetBarrierConfig();
+	return cfg ~= nil and cfg.wrap == false;
 end
 ------------------------------------------------------------------------------
 function IsOldSnow()
-	return Map.GetCustomOption(OPT_CENTER_SPLIT) == SPLIT_SNOW;
+	return ResolveBarrierSplit() == SPLIT_SNOW;
 end
 ------------------------------------------------------------------------------
 function IsSnowBarrier()
-	local ops = Map.GetCustomOption(OPT_CENTER_SPLIT);
-	return ops == SPLIT_WRAP or ops == SPLIT_NOWRAP;
+	return GetBarrierConfig() ~= nil;
 end
 ------------------------------------------------------------------------------
 
 -------------------------------------------------------------------------------
 function GetMapInitData(worldSize)
+	ResolveBarrierSplit();
 	-- This function can reset map grid sizes or world wrap settings.
 	--
 	-- East vs West is an extremely compact multiplayer map type.
@@ -116,8 +182,8 @@ function GetMapInitData(worldSize)
 	--
 	local world = GameInfo.Worlds[worldSize];
 	if(world ~= nil) then
-		local w = grid_size[1] - Map.Rand(5, "Map Width Variance");
-		local h = grid_size[2] - Map.Rand(5, "Map Height Variance");
+		local w = grid_size[1] - 2 * Map.Rand(3, "Map Width Variance");
+		local h = grid_size[2] - 2 * Map.Rand(3, "Map Height Variance");
 		print("Map canvas:", w, "x", h, "(base", grid_size[1], "x", grid_size[2], ")");
 		return {
 			Width = w,
@@ -139,7 +205,7 @@ function ResolveSnowWrapWidths()
 	if IsSnowWrapX() == false then
 		snowWrapBackWidth = 0;
 		if ops == 5 then
-			snowWrapCenterWidth = 2 * (Map.Rand(3, "Snow Wrap Center Width") + 1);
+			snowWrapCenterWidth = 2 * (Map.Rand(2, "Snow Wrap Center Width") + 1);
 		else
 			snowWrapCenterWidth = (ops - 1) * 2;
 		end
@@ -289,6 +355,95 @@ function GetSnowWrapLandMountainXs(iW)
 		xWest = firstLand;
 	end
 	return xWest, iW - 1 - xWest;
+end
+------------------------------------------------------------------------------
+function PlaceMirroredMountain(plotTypes, iW, iH, x, y)
+	if x < 0 or x >= iW or y < 0 or y >= iH then
+		return false
+	end
+	local idx = y * iW + x + 1;
+	if plotTypes[idx] == PlotTypes.PLOT_MOUNTAIN then
+		return false
+	end
+	plotTypes[idx] = PlotTypes.PLOT_MOUNTAIN;
+	local mx = iW - x - 1;
+	local my = iH - y - 1;
+	plotTypes[my * iW + mx + 1] = PlotTypes.PLOT_MOUNTAIN;
+	return true
+end
+------------------------------------------------------------------------------
+function PlaceChaoticFrontRidge(plotTypes, iW, iH, xCenter, density)
+	local xMin = xCenter - 2;
+	local xMax = xCenter + 2;
+	if xMin < 0 then
+		xMin = 0;
+	end
+	local mid = math.floor(iW / 2);
+	if xMax >= mid then
+		xMax = mid - 1;
+	end
+	local target = math.floor(iH * density);
+	if target < 1 then
+		target = 1;
+	end
+	local x = xCenter;
+	local y = Map.Rand(iH, "Chaotic Ridge StartY");
+	local placed = 0;
+	local steps = 0;
+	local maxSteps = iH * 10;
+	if maxSteps < 40 then
+		maxSteps = 40;
+	end
+	while placed < target and steps < maxSteps do
+		steps = steps + 1;
+		if PlaceMirroredMountain(plotTypes, iW, iH, x, y) then
+			placed = placed + 1;
+		end
+		if placed < target and Map.Rand(10, "Chaotic Spur") < 5 then
+			local sx = x + (Map.Rand(3, "Chaotic SpurX") - 1);
+			local sy = y + (Map.Rand(3, "Chaotic SpurY") - 1);
+			if sx < xMin then
+				sx = xMin;
+			end
+			if sx > xMax then
+				sx = xMax;
+			end
+			if sy < 0 then
+				sy = 0;
+			end
+			if sy >= iH then
+				sy = iH - 1;
+			end
+			if PlaceMirroredMountain(plotTypes, iW, iH, sx, sy) then
+				placed = placed + 1;
+			end
+		end
+		local dy = Map.Rand(3, "Chaotic WalkY") - 1;
+		if dy == 0 then
+			if Map.Rand(2, "Chaotic WalkY2") == 0 then
+				dy = 1;
+			else
+				dy = -1;
+			end
+		end
+		if Map.Rand(4, "Chaotic Skip") == 0 then
+			dy = dy + dy;
+		end
+		y = y + dy;
+		if y < 0 then
+			y = 0;
+		end
+		if y >= iH then
+			y = iH - 1;
+		end
+		x = x + (Map.Rand(3, "Chaotic WalkX") - 1);
+		if x < xMin then
+			x = xMin;
+		end
+		if x > xMax then
+			x = xMax;
+		end
+	end
 end
 ------------------------------------------------------------------------------
 function ShapeNoWrapBackstrip(plotTypes, iW, iH)
@@ -720,29 +875,38 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 		end
 	end
 	if IsSnowBarrier() then
-		local west_half = {};
-		for loop = 1, iH - 2 do
-			table.insert(west_half, loop);
-		end
+		local cfg = GetBarrierConfig();
 		local mountainOps = Map.GetCustomOption(OPT_FRONT_MOUNTAIN)
 		local mountainDensity = .20 + .05 * mountainOps
-		local iNumMountainsPerColumn = math.floor(iH * mountainDensity);
+		if cfg.chaoticMountains then
+			PlaceChaoticFrontRidge(self.wholeworldPlotTypes, iW, iH, iW / 2 - 4, mountainDensity);
+			if IsSnowWrapX() then
+				local x_wrap_west = GetSnowWrapLandMountainXs(iW);
+				PlaceChaoticFrontRidge(self.wholeworldPlotTypes, iW, iH, x_wrap_west, mountainDensity);
+			end
+		else
+			local west_half = {};
+			for loop = 1, iH - 2 do
+				table.insert(west_half, loop);
+			end
+			local iNumMountainsPerColumn = math.floor(iH * mountainDensity);
 
-		local front_shuffled = GetShuffledCopyOfTable(west_half)
-		local x_west, x_east = iW / 2 - 4, iW / 2 + 3;
-		for loop = 1, iNumMountainsPerColumn do
-			local y_west, y_east = front_shuffled[loop], iH - 1 - front_shuffled[loop];
-			self.wholeworldPlotTypes[y_west * iW + x_west + 1] = PlotTypes.PLOT_MOUNTAIN;
-			self.wholeworldPlotTypes[y_east * iW + x_east + 1] = PlotTypes.PLOT_MOUNTAIN;
-		end
-
-		if IsSnowWrapX() then
-			local wrap_shuffled = GetShuffledCopyOfTable(west_half)
-			local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
+			local front_shuffled = GetShuffledCopyOfTable(west_half)
+			local x_west, x_east = iW / 2 - 4, iW / 2 + 3;
 			for loop = 1, iNumMountainsPerColumn do
-				local y_west, y_east = wrap_shuffled[loop], iH - 1 - wrap_shuffled[loop];
-				self.wholeworldPlotTypes[y_west * iW + x_wrap_west + 1] = PlotTypes.PLOT_MOUNTAIN;
-				self.wholeworldPlotTypes[y_east * iW + x_wrap_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+				local y_west, y_east = front_shuffled[loop], iH - 1 - front_shuffled[loop];
+				self.wholeworldPlotTypes[y_west * iW + x_west + 1] = PlotTypes.PLOT_MOUNTAIN;
+				self.wholeworldPlotTypes[y_east * iW + x_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+			end
+
+			if IsSnowWrapX() then
+				local wrap_shuffled = GetShuffledCopyOfTable(west_half)
+				local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
+				for loop = 1, iNumMountainsPerColumn do
+					local y_west, y_east = wrap_shuffled[loop], iH - 1 - wrap_shuffled[loop];
+					self.wholeworldPlotTypes[y_west * iW + x_wrap_west + 1] = PlotTypes.PLOT_MOUNTAIN;
+					self.wholeworldPlotTypes[y_east * iW + x_wrap_east + 1] = PlotTypes.PLOT_MOUNTAIN;
+				end
 			end
 		end
 
@@ -1120,11 +1284,22 @@ function GeneratePlotTypes()
 				end
 			end
 		end
-		applyFoothills(iW / 2 - 5, iW / 2 + 4)
+		local fLo = iW / 2 - 5;
+		local fHi = iW / 2 + 4;
+		local cfg = GetBarrierConfig();
+		if cfg ~= nil and cfg.chaoticMountains then
+			fLo = iW / 2 - 7;
+			fHi = iW / 2 + 6;
+		end
+		applyFoothills(fLo, fHi)
 		if IsSnowWrapX() then
 			local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
-			applyFoothills(x_wrap_west - 1, x_wrap_west + 1)
-			applyFoothills(x_wrap_east - 1, x_wrap_east + 1)
+			local wPad = 1;
+			if cfg ~= nil and cfg.chaoticMountains then
+				wPad = 2;
+			end
+			applyFoothills(x_wrap_west - wPad, x_wrap_west + wPad)
+			applyFoothills(x_wrap_east - wPad, x_wrap_east + wPad)
 		end
 	end
 
@@ -1148,6 +1323,16 @@ function GenerateTerrain()
 	end
 
 	local args = {temperature = temp};
+	local cfg = GetBarrierConfig();
+	if cfg ~= nil and cfg.kind == "desert" then
+		args.fSnowLatitude = 1.1;
+		args.fTundraLatitude = 1.1;
+		args.iDesertPercent = 70;
+		args.iPlainsPercent = 36;
+		args.fGrassLatitude = 0.26;
+		args.fDesertBottomLatitude = 0.66;
+		args.fDesertTopLatitude = 1.05;
+	end
 	local terraingen = TerrainGenerator.Create(args);
 
 	terrainTypes = terraingen:GenerateTerrain();
@@ -1202,6 +1387,286 @@ function AddLakes()
 	end
 end
 ------------------------------------------------------------------------------
+------------------------------------------------------------------------------
+function AddDesertJungleBlob()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "desert" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local plot = Map.GetPlot(x, y);
+			if plot ~= nil and plot:GetFeatureType() == FeatureTypes.FEATURE_JUNGLE then
+				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mid = math.floor(iW / 2);
+	local minX, maxX = GetSnowWrapWaterBounds(iW);
+	if minX > maxX then
+		minX = 1;
+		maxX = mid - 2;
+	end
+	if maxX > mid - 1 then
+		maxX = mid - 1;
+	end
+	if minX > maxX then
+		return
+	end
+	local cx = (minX + maxX) / 2;
+	local cy = (iH - 1) / 2;
+	local maxDy = math.floor(iH * 0.35);
+	local yLo = cy - maxDy;
+	local yHi = cy + maxDy;
+	if yLo < 0 then
+		yLo = 0;
+	end
+	if yHi > iH - 1 then
+		yHi = iH - 1;
+	end
+	local rx = (maxX - minX) * 0.42;
+	local ry = iH * 0.26;
+	if rx < 2 then
+		rx = 2;
+	end
+	if ry < 2 then
+		ry = 2;
+	end
+	local placed = {};
+	y = yLo;
+	while y <= yHi do
+		local yNorm = (y - cy) / maxDy;
+		if yNorm < 0 then
+			yNorm = 0 - yNorm;
+		end
+		local xTaper = 1.0 - 0.55 * yNorm;
+		local x = minX;
+		while x <= maxX do
+			if skip[x] ~= true then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil then
+					local plotType = plot:GetPlotType();
+					if plotType == PlotTypes.PLOT_LAND or plotType == PlotTypes.PLOT_HILLS then
+						local feat = plot:GetFeatureType();
+						if feat ~= FeatureTypes.FEATURE_FLOOD_PLAINS and feat ~= FeatureTypes.FEATURE_ICE and feat ~= FeatureTypes.FEATURE_OASIS then
+							local nx = (x - cx) / rx;
+							if nx < 0 then
+								nx = 0 - nx;
+							end
+							local ny = (y - cy) / ry;
+							local d2 = (nx / xTaper) * (nx / xTaper) + ny * ny;
+							local jitter = (Map.Rand(21, "Jungle Oval") - 8) / 100;
+							if d2 < (1.0 + jitter) and Map.Rand(100, "Jungle Hole") < 62 then
+								plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+								plot:SetFeatureType(FeatureTypes.FEATURE_JUNGLE, -1);
+								table.insert(placed, {x, y});
+							end
+						end
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local pass = 1;
+	while pass <= 2 do
+		local chance = 24 - pass * 8;
+		local nPlaced = #placed;
+		local i = 1;
+		while i <= nPlaced do
+			local px = placed[i][1];
+			local py = placed[i][2];
+			local yNorm = (py - cy) / maxDy;
+			if yNorm < 0 then
+				yNorm = 0 - yNorm;
+			end
+			local taperChance = chance;
+			if yNorm > 0.5 then
+				taperChance = math.floor(chance * 0.4);
+			end
+			local d = 0;
+			while d < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(px, py, d);
+				if adj ~= nil then
+					local ax = adj:GetX();
+					local ay = adj:GetY();
+					if ax >= minX and ax <= maxX and ay >= yLo and ay <= yHi and skip[ax] ~= true then
+						local plotType = adj:GetPlotType();
+						if (plotType == PlotTypes.PLOT_LAND or plotType == PlotTypes.PLOT_HILLS)
+							and adj:GetFeatureType() ~= FeatureTypes.FEATURE_JUNGLE
+							and adj:GetFeatureType() ~= FeatureTypes.FEATURE_FLOOD_PLAINS
+							and adj:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
+							and adj:GetFeatureType() ~= FeatureTypes.FEATURE_OASIS then
+							if Map.Rand(100, "Jungle Sprawl") < taperChance then
+								adj:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+								adj:SetFeatureType(FeatureTypes.FEATURE_JUNGLE, -1);
+								table.insert(placed, {ax, ay});
+							end
+						end
+					end
+				end
+				d = d + 1;
+			end
+			i = i + 1;
+		end
+		pass = pass + 1;
+	end
+	local nPlaced = #placed;
+	local i = 1;
+	while i <= nPlaced do
+		if Map.Rand(100, "Jungle Thin") < 14 then
+			local plot = Map.GetPlot(placed[i][1], placed[i][2]);
+			if plot ~= nil and plot:GetFeatureType() == FeatureTypes.FEATURE_JUNGLE then
+				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+				if Map.Rand(100, "Jungle Gap Grass") < 40 then
+					plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+				end
+			end
+		end
+		i = i + 1;
+	end
+	local rxFrame = (maxX - minX) * 0.58;
+	local ryFrame = iH * 0.38;
+	if rxFrame < 2 then
+		rxFrame = 2;
+	end
+	if ryFrame < 2 then
+		ryFrame = 2;
+	end
+	local landMinX = 0;
+	local landMaxX = mid - 1;
+	y = 0;
+	while y < iH do
+		local yNorm = (y - cy) / maxDy;
+		if yNorm < 0 then
+			yNorm = 0 - yNorm;
+		end
+		local xTaper = 1.0 - 0.62 * yNorm;
+		if xTaper < 0.35 then
+			xTaper = 0.35;
+		end
+		local x = landMinX;
+		while x <= landMaxX do
+			if skip[x] ~= true then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil then
+					local plotType = plot:GetPlotType();
+					local feat = plot:GetFeatureType();
+					if plotType ~= PlotTypes.PLOT_MOUNTAIN
+						and feat ~= FeatureTypes.FEATURE_JUNGLE
+						and feat ~= FeatureTypes.FEATURE_FLOOD_PLAINS
+						and feat ~= FeatureTypes.FEATURE_ICE
+						and feat ~= FeatureTypes.FEATURE_OASIS then
+						local nx = (x - cx) / rxFrame;
+						if nx < 0 then
+							nx = 0 - nx;
+						end
+						local ny = (y - cy) / ryFrame;
+						local d2 = (nx / xTaper) * (nx / xTaper) + ny * ny;
+						local jitter = (Map.Rand(17, "Desert Frame") - 6) / 100;
+						local yEdge = (y == 0 or y == iH - 1);
+						if yEdge or d2 > (1.0 + jitter) then
+							if feat == FeatureTypes.FEATURE_FOREST then
+								plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+							end
+							plot:SetTerrainType(TerrainTypes.TERRAIN_DESERT, false, false);
+						elseif plot:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+							if Map.Rand(100, "Jungle Zone Grass") < 45 then
+								plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+							else
+								plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+							end
+						end
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	i = 1;
+	local rim = {};
+	while i <= nPlaced do
+		local plot = Map.GetPlot(placed[i][1], placed[i][2]);
+		if plot ~= nil and plot:GetFeatureType() == FeatureTypes.FEATURE_JUNGLE then
+			local d = 0;
+			while d < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(placed[i][1], placed[i][2], d);
+				if adj ~= nil then
+					local ax = adj:GetX();
+					local plotType = adj:GetPlotType();
+					if skip[ax] ~= true and ax >= minX and ax <= maxX
+						and (plotType == PlotTypes.PLOT_LAND or plotType == PlotTypes.PLOT_HILLS)
+						and adj:GetFeatureType() ~= FeatureTypes.FEATURE_JUNGLE
+						and adj:GetFeatureType() ~= FeatureTypes.FEATURE_FLOOD_PLAINS
+						and adj:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
+						and adj:GetFeatureType() ~= FeatureTypes.FEATURE_OASIS
+						and adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+						if Map.Rand(100, "Jungle Rim") < 80 then
+							if Map.Rand(100, "Jungle Rim Grass") < 32 then
+								adj:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+							else
+								adj:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+							end
+							table.insert(rim, {ax, adj:GetY()});
+						end
+					end
+				end
+				d = d + 1;
+			end
+		end
+		i = i + 1;
+	end
+	i = 1;
+	while i <= #rim do
+		local d = 0;
+		while d < DirectionTypes.NUM_DIRECTION_TYPES do
+			local adj = PlotDirNoXWrap(rim[i][1], rim[i][2], d);
+			if adj ~= nil then
+				local ax = adj:GetX();
+				local plotType = adj:GetPlotType();
+				if skip[ax] ~= true and ax >= minX and ax <= maxX
+					and (plotType == PlotTypes.PLOT_LAND or plotType == PlotTypes.PLOT_HILLS)
+					and adj:GetFeatureType() ~= FeatureTypes.FEATURE_JUNGLE
+					and adj:GetFeatureType() ~= FeatureTypes.FEATURE_FLOOD_PLAINS
+					and adj:GetFeatureType() ~= FeatureTypes.FEATURE_ICE
+					and adj:GetFeatureType() ~= FeatureTypes.FEATURE_OASIS
+					and adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					if Map.Rand(100, "Jungle Rim2") < 42 then
+						if Map.Rand(100, "Jungle Rim2 Grass") < 22 then
+							adj:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+						else
+							adj:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+						end
+					end
+				end
+			end
+			d = d + 1;
+		end
+		i = i + 1;
+	end
+	print("Desert jungle blob:", #placed);
+end
+------------------------------------------------------------------------------
 function AddFeatures()
 	print("Adding Features (Lua West vs East) ...");
 
@@ -1212,14 +1677,35 @@ function AddFeatures()
 	end
 	
 	local args = {rainfall = rain}
+	local cfg = GetBarrierConfig();
+	if cfg ~= nil and cfg.kind == "desert" then
+		args.iJunglePercent = 0;
+		args.iJungleFactor = 5;
+		args.iForestPercent = 10;
+		args.fMarshPercent = 2;
+		args.iOasisPercent = 12;
+	end
 	local featuregen = FeatureGenerator.Create(args);
 
 	-- false = flatten coastal mountains to hills. Snow Wrap keeps peaks on water.
 	featuregen:AddFeatures(IsSnowWrapX());
+	AddDesertJungleBlob();
 end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
 
+------------------------------------------------------------------------------
+function PlotDirNoXWrap(x, y, direction)
+	local p = Map.PlotDirection(x, y, direction);
+	if p == nil then
+		return nil
+	end
+	if math.abs(p:GetX() - x) > 1 then
+		return nil
+	end
+	return p;
+end
+------------------------------------------------------------------------------
 function GetRiverValueAtPlot(plot)
 	-- Custom method to force rivers to flow away from the map center.
 	local iW, iH = Map.GetGridSize()
@@ -1233,7 +1719,7 @@ function GetRiverValueAtPlot(plot)
 
 	local numDirections = DirectionTypes.NUM_DIRECTION_TYPES;
 	for direction = 0, numDirections - 1 do
-		local adjacentPlot = Map.PlotDirection(plot:GetX(), plot:GetY(), direction);
+		local adjacentPlot = PlotDirNoXWrap(plot:GetX(), plot:GetY(), direction);
 		if (adjacentPlot ~= nil) then
 			sum = sum + (numPlots - adjacentPlot:GetPlotType());
 		else
@@ -1269,19 +1755,19 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	if (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_NORTH) then
 	
 		riverPlot = startPlot;
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_EAST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_EAST);
 		if ( adjacentPlot == nil or riverPlot:IsWOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater() ) then
 			return;
 		end
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetWOfRiver(true, thisFlowDirection);
-		riverPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_NORTHEAST);
+		riverPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_NORTHEAST);
 		
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_NORTHEAST) then
 	
 		riverPlot = startPlot;
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHEAST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHEAST);
 		if ( adjacentPlot == nil or riverPlot:IsNWOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater() ) then
 			return;
 		end
@@ -1292,12 +1778,12 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST) then
 	
-		riverPlot = Map.PlotDirection(startPlot:GetX(), startPlot:GetY(), DirectionTypes.DIRECTION_EAST);
+		riverPlot = PlotDirNoXWrap(startPlot:GetX(), startPlot:GetY(), DirectionTypes.DIRECTION_EAST);
 		if (riverPlot == nil) then
 			return;
 		end
 		
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
 		if (adjacentPlot == nil or riverPlot:IsNEOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater()) then
 			return;
 		end
@@ -1308,12 +1794,12 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTH) then
 	
-		riverPlot = Map.PlotDirection(startPlot:GetX(), startPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
+		riverPlot = PlotDirNoXWrap(startPlot:GetX(), startPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
 		if (riverPlot == nil) then
 			return;
 		end
 		
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_EAST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_EAST);
 		if (adjacentPlot == nil or riverPlot:IsWOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater()) then
 			return;
 		end
@@ -1325,7 +1811,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST) then
 
 		riverPlot = startPlot;
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHEAST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHEAST);
 		if (adjacentPlot == nil or riverPlot:IsNWOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater()) then
 			return;
 		end
@@ -1337,7 +1823,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_NORTHWEST) then
 		
 		riverPlot = startPlot;
-		local adjacentPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
+		local adjacentPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_SOUTHWEST);
 		
 		if ( adjacentPlot == nil or riverPlot:IsNEOfRiver() or riverPlot:IsWater() or adjacentPlot:IsWater()) then
 			return;
@@ -1345,7 +1831,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetNEOfRiver(true, thisFlowDirection);
-		riverPlot = Map.PlotDirection(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_WEST);
+		riverPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_WEST);
 
 	else
 		-- River is starting here, set the direction in the next step
@@ -1364,27 +1850,27 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	-- Table of methods used to determine the adjacent plot.
 	local adjacentPlotFunctions = {
 		[FlowDirectionTypes.FLOWDIRECTION_NORTH] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHWEST); 
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHWEST); 
 		end,
 		
 		[FlowDirectionTypes.FLOWDIRECTION_NORTHEAST] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHEAST);
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHEAST);
 		end,
 		
 		[FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_EAST);
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_EAST);
 		end,
 		
 		[FlowDirectionTypes.FLOWDIRECTION_SOUTH] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_SOUTHWEST);
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_SOUTHWEST);
 		end,
 		
 		[FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_WEST);
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_WEST);
 		end,
 		
 		[FlowDirectionTypes.FLOWDIRECTION_NORTHWEST] = function() 
-			return Map.PlotDirection(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHWEST);
+			return PlotDirNoXWrap(riverPlotX, riverPlotY, DirectionTypes.DIRECTION_NORTHWEST);
 		end	
 	}
 	
@@ -1492,6 +1978,21 @@ function AddRivers()
 	local iW, iH = Map.GetGridSize()
 	print("Skirmish - Adding Rivers");
 	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT)
+	local snowRiverSkip = {};
+	if IsOldSnow() or IsSnowBarrier() then
+		local snowCols = GetSnowWrapColumns(iW);
+		local tundraCols = GetSnowWrapTundraColumns(iW);
+		local si = 1;
+		while si <= #snowCols do
+			snowRiverSkip[snowCols[si]] = true;
+			si = si + 1;
+		end
+		si = 1;
+		while si <= #tundraCols do
+			snowRiverSkip[tundraCols[si]] = true;
+			si = si + 1;
+		end
+	end
 	local passConditions = {
 		function(plot)
 			return plot:IsHills() or plot:IsMountain();
@@ -1528,13 +2029,15 @@ function AddRivers()
 			local current_y = plot:GetY()
 			if current_y < 2 or current_y >= iH - 1 then
 				-- Plot too close to north/south edge, ignore it.
+			elseif DEF_MIRRORED == 1 and current_x >= iW / 2 then
+				-- East is filled by the 180° copy; don't generate a second set.
 			elseif IsSnowNoWrap() and (current_x < 2 or current_x >= iW - 2) then
 				-- Plot too close to east/west 2-col ocean rims, ignore it.
 			elseif IsSnowWrapX() == false and (current_x < 1 or current_x >= iW - 2) then
 				-- Plot too close to east/west ocean rims, ignore it.
 			elseif IsSnowWrapX() and (current_x < 4 or current_x >= iW - 4) then
 				-- Plot in wrap-front buffer, ignore it.
-			elseif current_x >= (iW / 2) - 3 and current_x <= (iW / 2) + 2 then
+			elseif snowRiverSkip[current_x] then
 				-- Plot in buffer zone, ignore it.
 			elseif (not plot:IsWater()) then
 				if(passCondition(plot)) then
@@ -2000,19 +2503,15 @@ function SetDivide()
 			end
 		end
 	elseif IsOldSnow() then
-		--Snow
-
-		-- Add strip of tundra to middle of map
+		local tundraCols = GetSnowWrapTundraColumns(iW);
+		local snowCols = GetSnowWrapColumns(iW);
 		for y = 0, iH - 1 do
-			for x = math.floor(iW / 2) - 3, math.floor(iW / 2) + 2 do
+			for _, x in ipairs(tundraCols) do
 				local plot = Map.GetPlot(x, y)
 				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
 				plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
 			end
-		end
-		-- Add strip of snow to middle of map
-		for y = 0, iH - 1 do
-			for x = math.floor(iW / 2) - 2, math.floor(iW / 2) + 1 do
+			for _, x in ipairs(snowCols) do
 				local plot = Map.GetPlot(x, y)
 				if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
 					plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
@@ -2024,15 +2523,18 @@ function SetDivide()
 			end
 		end
 	elseif IsSnowBarrier() then
+		local cfg = GetBarrierConfig();
+		local barrierTerrain = BarrierTerrainType(cfg);
+		local transTerrain = BarrierTransitionType(cfg);
 		local tundraCols = GetSnowWrapTundraColumns(iW);
 		local snowCols = GetSnowWrapColumns(iW);
 		local mirrored = (DEF_MIRRORED == 1);
-		local snowPlots = {};
+		local hillTop = cfg.mountainPct + cfg.hillPct;
 		for y = 0, iH - 1 do
 			for _, x in ipairs(tundraCols) do
 				local plot = Map.GetPlot(x, y)
 				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
-				plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+				plot:SetTerrainType(transTerrain, false, false);
 			end
 			for _, x in ipairs(snowCols) do
 				local plot = Map.GetPlot(x, y)
@@ -2040,31 +2542,286 @@ function SetDivide()
 					plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 				end
 				plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
-				plot:SetTerrainType(TerrainTypes.TERRAIN_SNOW, false, false);
+				plot:SetTerrainType(barrierTerrain, false, false);
 				if (not mirrored) or (x <= iW * 0.5) then
-					table.insert(snowPlots, plot);
+					if cfg.iceLakePermille > 0 and Map.Rand(1000, "Barrier Ice Lake") < cfg.iceLakePermille then
+						plot:SetPlotType(PlotTypes.PLOT_OCEAN, false, false);
+						plot:SetTerrainType(TerrainTypes.TERRAIN_COAST, false, false);
+						plot:SetFeatureType(FeatureTypes.FEATURE_ICE, -1);
+					else
+						local pt = Map.Rand(100, "Barrier Plot Type");
+						if pt < cfg.mountainPct then
+							plot:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
+						elseif pt < hillTop then
+							plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+						else
+							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+						end
+					end
 				end
-			end
-		end
-		local shuffled = GetShuffledCopyOfTable(snowPlots);
-		local n = #shuffled;
-		local nMountain = math.floor(n * 0.01 + 0.5);
-		local nHill = math.floor(n * 0.19 + 0.5);
-		if nMountain + nHill > n then
-			nHill = n - nMountain;
-		end
-		for i, plot in ipairs(shuffled) do
-			if i <= nMountain then
-				plot:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
-			elseif i <= nMountain + nHill then
-				plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
-			else
-				plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 			end
 		end
 	end
 end
 
+------------------------------------------------------------------------------
+function CountSnowForestNeighbors(plot)
+	local n = 0;
+	local d = 0;
+	while d < DirectionTypes.NUM_DIRECTION_TYPES do
+		local adj = PlotDirNoXWrap(plot:GetX(), plot:GetY(), d);
+		if adj ~= nil and adj:GetFeatureType() == FeatureTypes.FEATURE_FOREST then
+			n = n + 1;
+		end
+		d = d + 1;
+	end
+	return n;
+end
+------------------------------------------------------------------------------
+function AddSnowForests()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.forestPct < 1 then
+		return
+	end
+	local barrierTerrain = BarrierTerrainType(cfg);
+	local iW, iH = Map.GetGridSize();
+	local snowCols = GetSnowWrapColumns(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local remaining = {};
+	local y = 0;
+	while y < iH do
+		local ci = 1;
+		while ci <= #snowCols do
+			local x = snowCols[ci];
+			if (not mirrored) or (x <= iW * 0.5) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil then
+					local plotType = plot:GetPlotType();
+					if plot:GetTerrainType() == barrierTerrain
+						and (plotType == PlotTypes.PLOT_LAND or plotType == PlotTypes.PLOT_HILLS)
+						and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
+						and plot:GetResourceType(-1) == -1 then
+						table.insert(remaining, plot);
+					end
+				end
+			end
+			ci = ci + 1;
+		end
+		y = y + 1;
+	end
+	local n = #remaining;
+	local target = math.floor(n * (cfg.forestPct / 100) + 0.5);
+	local placed = 0;
+	while placed < target and #remaining > 0 do
+		local totalWeight = 0;
+		local i = 1;
+		while i <= #remaining do
+			local neigh = CountSnowForestNeighbors(remaining[i]);
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			totalWeight = totalWeight + w;
+			i = i + 1;
+		end
+		if totalWeight < 1 then
+			break
+		end
+		local roll = Map.Rand(totalWeight, "Barrier Forest Cluster");
+		i = 1;
+		while i <= #remaining do
+			local neigh = CountSnowForestNeighbors(remaining[i]);
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			if roll < w then
+				remaining[i]:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+				table.remove(remaining, i);
+				placed = placed + 1;
+				break
+			end
+			roll = roll - w;
+			i = i + 1;
+		end
+	end
+	print("Barrier forests:", placed, "/", n);
+end
+------------------------------------------------------------------------------
+function AddBarrierOases()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.oasisPctOfFlat < 1 then
+		return
+	end
+	local barrierTerrain = BarrierTerrainType(cfg);
+	local iW, iH = Map.GetGridSize();
+	local snowCols = GetSnowWrapColumns(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local remaining = {};
+	local y = 0;
+	while y < iH do
+		local ci = 1;
+		while ci <= #snowCols do
+			local x = snowCols[ci];
+			if (not mirrored) or (x <= iW * 0.5) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:GetTerrainType() == barrierTerrain
+					and plot:GetPlotType() == PlotTypes.PLOT_LAND
+					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
+					and plot:GetResourceType(-1) == -1 then
+					table.insert(remaining, plot);
+				end
+			end
+			ci = ci + 1;
+		end
+		y = y + 1;
+	end
+	local shuffled = GetShuffledCopyOfTable(remaining);
+	local n = #shuffled;
+	local target = math.floor(n * (cfg.oasisPctOfFlat / 100) + 0.5);
+	local placed = 0;
+	local i = 1;
+	while i <= n and placed < target do
+		local plot = shuffled[i];
+		if plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+			if plot:CanHaveFeature(FeatureTypes.FEATURE_OASIS) then
+				plot:SetFeatureType(FeatureTypes.FEATURE_OASIS, -1);
+				placed = placed + 1;
+			end
+		end
+		i = i + 1;
+	end
+	i = 1;
+	while i <= n and placed < target do
+		local plot = shuffled[i];
+		if plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+			plot:SetFeatureType(FeatureTypes.FEATURE_OASIS, -1);
+			placed = placed + 1;
+		end
+		i = i + 1;
+	end
+	print("Barrier oases:", placed, "/", n);
+end
+------------------------------------------------------------------------------
+function PurgeDesertBarrierResources()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "desert" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local cols = GetSnowWrapColumns(iW);
+	local tundraCols = GetSnowWrapTundraColumns(iW);
+	local ci = 1;
+	while ci <= #tundraCols do
+		table.insert(cols, tundraCols[ci]);
+		ci = ci + 1;
+	end
+	local n = 0;
+	ci = 1;
+	while ci <= #cols do
+		local x = cols[ci];
+		local y = 0;
+		while y < iH do
+			local plot = Map.GetPlot(x, y);
+			if plot ~= nil and plot:GetResourceType(-1) ~= -1 then
+				plot:SetResourceType(-1);
+				n = n + 1;
+			end
+			y = y + 1;
+		end
+		ci = ci + 1;
+	end
+	print("Desert barrier resources purged:", n);
+end
+------------------------------------------------------------------------------
+function PlaceDesertMainlandResourceBoost()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "desert" then
+		return
+	end
+	local ids = {
+		GameInfoTypes["RESOURCE_BANANA"],
+		GameInfoTypes["RESOURCE_WHEAT"],
+		GameInfoTypes["RESOURCE_COW"],
+		GameInfoTypes["RESOURCE_SHEEP"],
+		GameInfoTypes["RESOURCE_DEER"],
+		GameInfoTypes["RESOURCE_STONE"],
+		GameInfoTypes["RESOURCE_HORSE"],
+		GameInfoTypes["RESOURCE_IRON"],
+		GameInfoTypes["RESOURCE_INCENSE"],
+		GameInfoTypes["RESOURCE_OIL"],
+	};
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local eligible = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
+					and plot:GetResourceType(-1) == -1 then
+					table.insert(eligible, plot);
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local shuffled = GetShuffledCopyOfTable(eligible);
+	local n = #shuffled;
+	local target = math.floor(n * 0.09 + 0.5);
+	local placed = 0;
+	local i = 1;
+	local ironID = GameInfoTypes["RESOURCE_IRON"];
+	local horseID = GameInfoTypes["RESOURCE_HORSE"];
+	local oilID = GameInfoTypes["RESOURCE_OIL"];
+	while i <= n and placed < target do
+		local plot = shuffled[i];
+		local nFit = 0;
+		local fit = {};
+		local k = 1;
+		while k <= #ids do
+			if ids[k] ~= nil and plot:CanHaveResource(ids[k]) then
+				nFit = nFit + 1;
+				fit[nFit] = ids[k];
+			end
+			k = k + 1;
+		end
+		if nFit > 0 then
+			local pick = fit[Map.Rand(nFit, "Desert Resource Boost") + 1];
+			local amt = 1;
+			if pick == ironID or pick == horseID or pick == oilID then
+				amt = 2;
+			end
+			plot:SetResourceType(pick, amt);
+			placed = placed + 1;
+		end
+		i = i + 1;
+	end
+	print("Desert mainland resource boost:", placed, "/", n);
+end
 ------------------------------------------------------------------------------
 function getMirroredPlot(plot)
 	local iW, iH = Map.GetGridSize();
@@ -2130,19 +2887,13 @@ function StartPlotSystem()
 
 	print("Placing Resources and City States.");
 	start_plot_database:PlaceResourcesAndCityStates()
+
+	PurgeDesertBarrierResources();
+	PlaceDesertMainlandResourceBoost();
+	AddSnowForests();
+	AddBarrierOases();
 	
-	if IsOldSnow() then
-		local iW, iH = Map.GetGridSize()
-		for x = math.floor(iW / 2) - 2, (iW / 2) + 1 do
-			for y = 0, iH - 1 do
-				local plot = Map.GetPlot(x, y)
-				plot:SetWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
-				plot:SetNWOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
-				plot:SetNEOfRiver(false,FlowDirectionTypes.NO_FLOWDIRECTION)
-			end
-		end
-	end
-	if IsSnowBarrier() then
+	if IsOldSnow() or IsSnowBarrier() then
 		local iW, iH = Map.GetGridSize()
 		local snowCols = GetSnowWrapColumns(iW);
 		for _, x in ipairs(snowCols) do
@@ -2199,30 +2950,36 @@ function StartPlotSystem()
             	local plot = Map.GetPlot(x, y);
 				if ( plot:IsWOfRiver() ) then
 					local mirrorPlot = getMirroredPlot(plot);
-					mirrorPlot = Map.PlotDirection(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_WEST);
-					local dir = FlowDirectionTypes.FLOWDIRECTION_NORTH;
-					if( plot:GetRiverEFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_NORTH ) then
-						dir = FlowDirectionTypes.FLOWDIRECTION_SOUTH;
+					mirrorPlot = PlotDirNoXWrap(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_WEST);
+					if mirrorPlot ~= nil then
+						local dir = FlowDirectionTypes.FLOWDIRECTION_NORTH;
+						if( plot:GetRiverEFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_NORTH ) then
+							dir = FlowDirectionTypes.FLOWDIRECTION_SOUTH;
+						end
+						mirrorPlot:SetWOfRiver(true, dir);
 					end
-					mirrorPlot:SetWOfRiver(true, dir);
 				end
 				if ( plot:IsNWOfRiver() ) then
 					local mirrorPlot = getMirroredPlot(plot);
-					mirrorPlot = Map.PlotDirection(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_NORTHWEST);
-					local dir = FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST;
-					if( plot:GetRiverSEFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST) then
-						dir = FlowDirectionTypes.FLOWDIRECTION_NORTHEAST;
-					end;
-					mirrorPlot:SetNWOfRiver(true, dir);
+					mirrorPlot = PlotDirNoXWrap(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_NORTHWEST);
+					if mirrorPlot ~= nil then
+						local dir = FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST;
+						if( plot:GetRiverSEFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST) then
+							dir = FlowDirectionTypes.FLOWDIRECTION_NORTHEAST;
+						end;
+						mirrorPlot:SetNWOfRiver(true, dir);
+					end
 				end
 				if ( plot:IsNEOfRiver() ) then
 					local mirrorPlot = getMirroredPlot(plot);
-					mirrorPlot = Map.PlotDirection(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_NORTHEAST);
-					local dir = FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST;
-					if( plot:GetRiverSWFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST) then
-						dir = FlowDirectionTypes.FLOWDIRECTION_NORTHWEST;
-					end;
-					mirrorPlot:SetNEOfRiver(true, dir);
+					mirrorPlot = PlotDirNoXWrap(mirrorPlot:GetX(), mirrorPlot:GetY(), DirectionTypes.DIRECTION_NORTHEAST);
+					if mirrorPlot ~= nil then
+						local dir = FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST;
+						if( plot:GetRiverSWFlowDirection() == FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST) then
+							dir = FlowDirectionTypes.FLOWDIRECTION_NORTHWEST;
+						end;
+						mirrorPlot:SetNEOfRiver(true, dir);
+					end
 				end
 			end
 		end

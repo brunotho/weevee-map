@@ -555,8 +555,20 @@ function FeatureGenerator:AddAtolls()
 			local x = (plotIndex - 1) % iW;
 			local y = (plotIndex - x - 1) / iW;
 			local plot = Map.GetPlot(x, y)
-			plot:SetFeatureType(feature_atoll, -1);
-			iNumAtollsPlaced = iNumAtollsPlaced + 1;
+			local adjAtoll = false;
+			local di = 1;
+			while di <= 6 do
+				local adjPlot = Map.PlotDirection(x, y, direction_types[di]);
+				if adjPlot ~= nil and adjPlot:GetFeatureType() == feature_atoll then
+					adjAtoll = true;
+					break
+				end
+				di = di + 1;
+			end
+			if adjAtoll == false then
+				plot:SetFeatureType(feature_atoll, -1);
+				iNumAtollsPlaced = iNumAtollsPlaced + 1;
+			end
 		--else
 			--print("** ERROR ** Atoll unable to be placed and/or chosen Plot Index was nil.");
 		end
