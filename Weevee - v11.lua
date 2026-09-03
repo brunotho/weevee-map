@@ -2314,6 +2314,23 @@ function AddDesertJungleBlob()
 		i = i + 1;
 	end
 	print("Desert jungle blob:", #placed);
+	local fp = 0;
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:CanHaveFeature(FeatureTypes.FEATURE_FLOOD_PLAINS) then
+					plot:SetFeatureType(FeatureTypes.FEATURE_FLOOD_PLAINS, -1);
+					fp = fp + 1;
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Desert late floodplains:", fp);
 end
 ------------------------------------------------------------------------------
 function AddWetlandRiverDesert()
