@@ -43,7 +43,7 @@ end
 ------------------------------------------------------------------------------
 function GetMapScriptInfo()
 	return {
-		Name = "[COLOR_HIGHLIGHT_TEXT]Weevee Map - v11 [ENDCOLOR]",
+		Name = "[COLOR_HIGHLIGHT_TEXT]Weevee Map - v11.0.1 [ENDCOLOR]",
 		Description = "",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
@@ -196,6 +196,7 @@ function GetBarrierConfig()
 			marshBarrierPct = 24,
 			jungleBarrierPct = 18,
 			forestBarrierPct = 16,
+			riverDesertPct = 32,
 		};
 	end
 	return nil;
@@ -259,8 +260,8 @@ function GetMapInitData(worldSize)
 	--
 	local world = GameInfo.Worlds[worldSize];
 	if(world ~= nil) then
-		local w = grid_size[1] - 2 * Map.Rand(3, "Map Width Variance");
-		local h = grid_size[2] - 2 * Map.Rand(3, "Map Height Variance");
+		local w = grid_size[1] - 2 * Map.Rand(4, "Map Width Variance");
+		local h = grid_size[2] - 2 * Map.Rand(4, "Map Height Variance");
 		print("Map canvas:", w, "x", h, "(base", grid_size[1], "x", grid_size[2], ")");
 		return {
 			Width = w,
@@ -1476,10 +1477,10 @@ function GenerateTerrain()
 	elseif cfg ~= nil and cfg.kind == "wetland" then
 		args.fSnowLatitude = 1.1;
 		args.fTundraLatitude = 1.1;
-		args.iDesertPercent = 10;
+		args.iDesertPercent = 14;
 		args.iPlainsPercent = 32;
 		args.fGrassLatitude = 0.34;
-		args.fDesertBottomLatitude = 0.48;
+		args.fDesertBottomLatitude = 0.40;
 		args.fDesertTopLatitude = 0.92;
 	end
 	local terraingen = TerrainGenerator.Create(args);
@@ -1873,6 +1874,107 @@ function AddDesertJungleBlob()
 	print("Desert jungle blob:", #placed);
 end
 ------------------------------------------------------------------------------
+function AddWetlandRiverDesert()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wetland" then
+		return
+	end
+	local pct = cfg.riverDesertPct;
+	if pct == nil or pct < 1 then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local remaining = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:GetPlotType() == PlotTypes.PLOT_LAND
+					and plot:IsRiver()
+					and plot:GetTerrainType() ~= TerrainTypes.TERRAIN_DESERT then
+					table.insert(remaining, plot);
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local n = #remaining;
+	local target = math.floor(n * (pct / 100) + 0.5);
+	local placed = 0;
+	while placed < target and #remaining > 0 do
+		local totalWeight = 0;
+		local i = 1;
+		while i <= #remaining do
+			local neigh = 0;
+			local d = 0;
+			while d < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(remaining[i]:GetX(), remaining[i]:GetY(), d);
+				if adj ~= nil and adj:IsWater() == false and adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					neigh = neigh + 1;
+				end
+				d = d + 1;
+			end
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			totalWeight = totalWeight + w;
+			i = i + 1;
+		end
+		if totalWeight < 1 then
+			break
+		end
+		local roll = Map.Rand(totalWeight, "Wetland River Desert");
+		i = 1;
+		while i <= #remaining do
+			local neigh = 0;
+			local d = 0;
+			while d < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(remaining[i]:GetX(), remaining[i]:GetY(), d);
+				if adj ~= nil and adj:IsWater() == false and adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					neigh = neigh + 1;
+				end
+				d = d + 1;
+			end
+			local w = 1;
+			if neigh == 1 then
+				w = 6;
+			elseif neigh >= 2 then
+				w = 10;
+			end
+			if roll < w then
+				remaining[i]:SetTerrainType(TerrainTypes.TERRAIN_DESERT, false, false);
+				table.remove(remaining, i);
+				placed = placed + 1;
+				break
+			end
+			roll = roll - w;
+			i = i + 1;
+		end
+	end
+	print("Wetland river desert:", placed, "/", n);
+end
+------------------------------------------------------------------------------
 function AddFeatures()
 	print("Adding Features (Lua West vs East) ...");
 
@@ -1900,12 +2002,13 @@ function AddFeatures()
 		args.iJunglePercent = 50;
 		args.iJungleFactor = 2;
 		args.iForestPercent = 34;
-		args.fMarshPercent = 12;
+		args.fMarshPercent = 16;
 		args.iOasisPercent = 2;
 	end
 	local featuregen = FeatureGenerator.Create(args);
 
 	AddWastelandWaterLayout();
+	AddWetlandRiverDesert();
 	-- false = flatten coastal mountains to hills. Snow Wrap keeps peaks on water.
 	featuregen:AddFeatures(IsSnowWrapX());
 	AddDesertJungleBlob();
