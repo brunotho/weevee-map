@@ -175,6 +175,7 @@ function AssignStartingPlots.Create()
 		GetWorldLuxuryTargetNumbers = AssignStartingPlots.GetWorldLuxuryTargetNumbers,
 		PlaceMarble = AssignStartingPlots.PlaceMarble,
 		PlaceLuxuries = AssignStartingPlots.PlaceLuxuries,
+		PlaceDeferredCapitalLuxuries = AssignStartingPlots.PlaceDeferredCapitalLuxuries,
 		PlaceSmallQuantitiesOfStrategics = AssignStartingPlots.PlaceSmallQuantitiesOfStrategics,
 		PlaceFish = AssignStartingPlots.PlaceFish,
 		PlaceSexyBonusAtCivStarts = AssignStartingPlots.PlaceSexyBonusAtCivStarts,
@@ -8996,6 +8997,7 @@ function AssignStartingPlots:PlaceLuxuries()
 	local acttoplace = 0;
 	local rmore = false;
 	local lefttoplace = 0;
+	self.unplacedCapitalLux = 0;
 	
 	-- Place Luxuries at civ start locations.
 	for loop, reg_data in ipairs(self.regions_sorted_by_type) do
@@ -9123,14 +9125,27 @@ function AssignStartingPlots:PlaceLuxuries()
 
 			lplaced = false;
 			local last_placed = 0;
+			local luxAttempts = 0;
+			local secondLuxOk = false;
 			
 			while lplaced == false do
+				luxAttempts = luxAttempts + 1;
+				if luxAttempts > iNumTypesAllowed + 2 then
+					print("Second luxury retry cap Region#", region_number);
+					lplaced = true;
+					break
+				end
 				rmore = false;
 				
 				if iNumTypesAllowed > 0 then
+						local pickGuard = 0;
 						while use_this_ID == last_placed do
 							local diceroll = 1 + Map.Rand(iNumTypesAllowed, "Choosing second luxury type at a start location - LUA");
 							use_this_ID = candidate_types[diceroll];
+							pickGuard = pickGuard + 1;
+							if iNumTypesAllowed < 2 or pickGuard > 8 then
+								break
+							end
 						end
 				else
 					-- See if any City State types are eligible.
@@ -9142,9 +9157,14 @@ function AssignStartingPlots:PlaceLuxuries()
 						end
 					end
 					if iNumTypesAllowed > 0 then
+						local pickGuard = 0;
 						while use_this_ID == last_placed do
 							local diceroll = 1 + Map.Rand(iNumTypesAllowed, "Choosing second luxury type at a start location - LUA");
 							use_this_ID = candidate_types[diceroll];
+							pickGuard = pickGuard + 1;
+							if iNumTypesAllowed < 2 or pickGuard > 8 then
+								break
+							end
 						end
 					else
 						-- See if anybody else's regional type is eligible.
@@ -9159,9 +9179,14 @@ function AssignStartingPlots:PlaceLuxuries()
 							end
 						end
 						if iNumTypesAllowed > 0 then
+							local pickGuard = 0;
 							while use_this_ID == last_placed do
 								local diceroll = 1 + Map.Rand(iNumTypesAllowed, "Choosing second luxury type at a start location - LUA");
 								use_this_ID = candidate_types[diceroll];
+								pickGuard = pickGuard + 1;
+								if iNumTypesAllowed < 2 or pickGuard > 8 then
+									break
+								end
 							end
 						else
 							print("-"); print("Failed to place second Luxury type at start in Region#", region_number, "-- no eligible types!"); print("-");
@@ -9192,7 +9217,7 @@ function AssignStartingPlots:PlaceLuxuries()
 				print("Left To Place: ", lefttoplace);
 				print("############### RANDOMS ###############");
 
-				if use_this_ID ~= nil then -- Place this luxury type at this start.
+				if use_this_ID ~= nil and use_this_ID ~= 0 then -- Place this luxury type at this start.
 					local primary, secondary, tertiary, quaternary, luxury_plot_lists, shuf_list;
 					primary, secondary, tertiary, quaternary = self:GetIndicesForLuxuryType(use_this_ID);
 					luxury_plot_lists = self:GenerateLuxuryPlotListsAtCitySite(x, y, 2, false)
@@ -9216,6 +9241,7 @@ function AssignStartingPlots:PlaceLuxuries()
 					end
 					if iNumLeftToPlace == 0 and lefttoplace == 0 then
 						print("-"); print("Placed Second Luxury type of ID#", use_this_ID, "for start located at Plot", x, y, " in Region#", region_number);
+						secondLuxOk = true;
 						lplaced = true;
 					else
 						print("Num To Place: ", iNumLeftToPlace);
@@ -9226,8 +9252,14 @@ function AssignStartingPlots:PlaceLuxuries()
 					end
 				end
 			end
-
-
+			if secondLuxOk == false then
+				local nFail = rtoplace;
+				if nFail == nil or nFail < 1 then
+					nFail = 1;
+				end
+				self.unplacedCapitalLux = self.unplacedCapitalLux + nFail;
+				print("Capital luxury shortfall Region#", region_number, nFail);
+			end
 		end
 	end
 
@@ -9477,6 +9509,53 @@ function AssignStartingPlots:PlaceLuxuries()
 		-- Add a special case function for each luxury to be handled as a special case.
 		self:PlaceMarble()
 	end
+	self:PlaceDeferredCapitalLuxuries()
+end
+------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceDeferredCapitalLuxuries()
+	local nWant = self.unplacedCapitalLux or 0;
+	if nWant < 1 then
+		return
+	end
+	local ids = {};
+	if self.resourceIDs_assigned_to_random ~= nil then
+		for _, id in ipairs(self.resourceIDs_assigned_to_random) do
+			if id ~= nil then
+				table.insert(ids, id);
+			end
+		end
+	end
+	if #ids < 1 and self.resourceIDs_assigned_to_regions ~= nil then
+		for _, id in ipairs(self.resourceIDs_assigned_to_regions) do
+			if id ~= nil then
+				table.insert(ids, id);
+			end
+		end
+	end
+	if #ids < 1 then
+		print("Deferred capital luxuries: no IDs");
+		return
+	end
+	ids = GetShuffledCopyOfTable(ids);
+	local placed = 0;
+	local pass = 1;
+	while placed < nWant and pass <= #ids do
+		local res_ID = ids[pass];
+		pass = pass + 1;
+		local primary, secondary, tertiary, quaternary = self:GetIndicesForLuxuryType(res_ID);
+		local lists = {primary, secondary, tertiary, quaternary};
+		local li = 1;
+		while li <= 4 and placed < nWant do
+			local idx = lists[li];
+			if idx ~= nil and idx > 0 and self.global_luxury_plot_lists[idx] ~= nil then
+				local shuf = GetShuffledCopyOfTable(self.global_luxury_plot_lists[idx]);
+				local left = self:PlaceSpecificNumberOfResources(res_ID, 1, nWant - placed, 1, 2, 0, 1, shuf);
+				placed = placed + ((nWant - placed) - left);
+			end
+			li = li + 1;
+		end
+	end
+	print("Deferred capital luxuries placed:", placed, "/", nWant);
 end
 ------------------------------------------------------------------------------
 function AssignStartingPlots:PlaceMarble()
@@ -10184,7 +10263,7 @@ function AssignStartingPlots:AddForestToResource()
 			local plot = Map.GetPlot(x, y)
 			local rType = plot:GetResourceType(-1)
 			local featureType = plot:GetFeatureType();
-			local terrianType = plot:GetTerrainType();
+			local terrainType = plot:GetTerrainType();
 			if rType == self.deer_ID or rType == self.fur_ID or rType == self.dye_ID or rType == self.truffles_ID or rType == self.cocoa_ID then
 				if featureType ~= FeatureTypes.FEATURE_FOREST and terrainType ~= TerrainTypes.TERRAIN_DESERT then
 					plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1)

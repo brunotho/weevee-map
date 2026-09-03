@@ -1,14 +1,44 @@
 ------------------------------------------------------------------------------
-local _dbgFile = nil;
-if io and io.open then
-	_dbgFile = io.open("weevee_dbg.log", "w");
+local _dbgPath = nil;
+local function DbgLogPath()
+	if _dbgPath ~= nil then
+		return _dbgPath;
+	end
+	_dbgPath = "weevee_dbg.log";
+	if os and os.getenv then
+		local home = os.getenv("USERPROFILE") or os.getenv("HOME") or "";
+		if home ~= "" then
+			_dbgPath = home .. "\\Documents\\My Games\\Sid Meier's Civilization 5\\Logs\\weevee_dbg.log";
+		end
+	end
+	return _dbgPath;
+end
+function DBGReset()
+	local path = DbgLogPath();
+	if not (io and io.open) then
+		return
+	end
+	pcall(function()
+		local f = io.open(path, "w");
+		if f then
+			f:write("weevee dbg start\n");
+			f:close();
+		end
+	end);
 end
 function DBG(msg)
-	if _dbgFile then
-		_dbgFile:write(tostring(msg) .. "\n");
-		_dbgFile:flush();
-	end
 	print(msg);
+	if not (io and io.open) then
+		return
+	end
+	pcall(function()
+		local f = io.open(DbgLogPath(), "a");
+		if f then
+			f:write(tostring(msg));
+			f:write("\n");
+			f:close();
+		end
+	end);
 end
 ------------------------------------------------------------------------------
 --	FILE:	 West_vs_East.lua
@@ -67,13 +97,13 @@ function GetMapScriptInfo()
 				Name = "[COLOR_HIGHLIGHT_TEXT]Climate[ENDCOLOR]",
 				Values = {
 					"[COLOR_HIGHLIGHT_TEXT]Snow (Legacy)[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Standard[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Standard[ENDCOLOR]",
 					"[COLOR_HIGHLIGHT_TEXT]Mire[ENDCOLOR]",
 					"[COLOR_HIGHLIGHT_TEXT]Sirocco[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT](WIP dont use!) Wasteland[ENDCOLOR]",
-					"[COLOR_HIGHLIGHT_TEXT](WIP dont use!) Random (sans Snow)[ENDCOLOR]"
+					"[COLOR_HIGHLIGHT_TEXT]Wasteland[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] Random (sans Snow)[ENDCOLOR]"
 				},
-				DefaultValue = 2,
+				DefaultValue = 6,
 				SortPriority = -99,
 			},
 			{
@@ -346,17 +376,93 @@ end
 local ProcessResourceListVanilla = AssignStartingPlots.ProcessResourceList;
 function AssignStartingPlots:ProcessResourceList(frequency, impact_table_number, plot_list, resources_to_place)
 	local cfg = GetBarrierConfig();
-	if cfg ~= nil and cfg.kind == "desert" and resources_to_place ~= nil then
-		local i = 1;
-		while resources_to_place[i] ~= nil do
-			if resources_to_place[i][1] == self.banana_ID then
-				frequency = frequency * 1.25;
-				break
+	if cfg ~= nil and resources_to_place ~= nil then
+		if cfg.kind == "desert" then
+			local i = 1;
+			while resources_to_place[i] ~= nil do
+				if resources_to_place[i][1] == self.banana_ID then
+					frequency = frequency * 1.25;
+					break
+				end
+				i = i + 1;
 			end
-			i = i + 1;
+		elseif cfg.kind == "wasteland" then
+			local i = 1;
+			local isDeer = false;
+			while resources_to_place[i] ~= nil do
+				if resources_to_place[i][1] == self.deer_ID then
+					isDeer = true;
+					break
+				end
+				i = i + 1;
+			end
+			if isDeer then
+				local hillShare = 0.25;
+				if plot_list == self.extra_deer_list then
+					local nHill = table.maxn(plot_list);
+					local nFlat = table.maxn(self.tundra_flat_no_feature);
+					if nHill < 1 or nFlat < 1 then
+						frequency = 99999;
+					else
+						local bonus = frequency / 10;
+						if bonus < 0.1 then
+							bonus = 1;
+						end
+						local totalWant = math.ceil(nFlat / (12 * bonus * 1.18));
+						local hillWant = math.floor(totalWant * hillShare + 0.5);
+						if hillWant < 1 then
+							hillWant = 1;
+						end
+						frequency = nHill / hillWant;
+						print("Wasteland deer quota: total", totalWant, " hills", hillWant, " flats list", nFlat);
+					end
+				elseif plot_list == self.tundra_flat_no_feature then
+					if table.maxn(self.extra_deer_list) > 0 then
+						frequency = frequency * 1.18 / (1 - hillShare);
+					else
+						frequency = frequency * 1.18;
+					end
+				else
+					frequency = frequency * 1.18;
+				end
+			end
 		end
 	end
 	return ProcessResourceListVanilla(self, frequency, impact_table_number, plot_list, resources_to_place);
+end
+------------------------------------------------------------------------------
+local PlaceStrategicAndBonusVanilla = AssignStartingPlots.PlaceStrategicAndBonusResources;
+function AssignStartingPlots:PlaceStrategicAndBonusResources()
+	DBG("PRCS PlaceStrategicAndBonusResources enter");
+	PlaceStrategicAndBonusVanilla(self);
+	DBG("PRCS PlaceStrategicAndBonusResources done");
+end
+------------------------------------------------------------------------------
+function AssignStartingPlots:PlaceResourcesAndCityStates()
+	local function step(name, fn)
+		DBG("PRCS " .. name);
+		local ok, err = pcall(fn, self);
+		if not ok then
+			DBG("PRCS ERROR in " .. name .. ": " .. tostring(err));
+		end
+	end
+	step("AssignLuxuryRoles", self.AssignLuxuryRoles);
+	step("PlaceCityStates", self.PlaceCityStates);
+	step("GenerateGlobalResourcePlotLists", self.GenerateGlobalResourcePlotLists);
+	step("PlaceLuxuries", self.PlaceLuxuries);
+	step("PlaceStrategicAndBonusResources", self.PlaceStrategicAndBonusResources);
+	step("NormalizeCityStateLocations", self.NormalizeCityStateLocations);
+	step("AddForestToResource", self.AddForestToResource);
+	step("FixSugarJungles", self.FixSugarJungles);
+	DBG("PRCS RecalculateAreas");
+	pcall(function()
+		Map.RecalculateAreas();
+	end);
+	DBG("PRCS PrintFinalResourceTotalsToLog");
+	pcall(function()
+		self:PrintFinalResourceTotalsToLog();
+	end);
+	DBG("PRCS done");
 end
 ------------------------------------------------------------------------------
 local MIN_START_LANDMASS = 6;
@@ -416,8 +522,10 @@ end
 ------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 function GetMapInitData(worldSize)
+	DBGReset();
 	ResolveBarrierSplit();
 	ResolveWrap();
+	DBG("GetMapInitData split=" .. tostring(ResolveBarrierSplit()) .. " wrap=" .. tostring(ResolveWrap()) .. " kind=" .. tostring((GetBarrierConfig() and GetBarrierConfig().kind) or "legacy"));
 	-- This function can reset map grid sizes or world wrap settings.
 	--
 	-- East vs West is an extremely compact multiplayer map type.
@@ -855,6 +963,48 @@ end
 local ASP_GenerateGlobalResourcePlotLists = AssignStartingPlots.GenerateGlobalResourcePlotLists;
 function AssignStartingPlots:GenerateGlobalResourcePlotLists()
 	ASP_GenerateGlobalResourcePlotLists(self);
+	local cfg = GetBarrierConfig();
+	if cfg ~= nil and cfg.kind == "wasteland" then
+		local iW, iH = Map.GetGridSize();
+		local skip = {};
+		local cols = GetSnowWrapColumns(iW);
+		local ci = 1;
+		while ci <= #cols do
+			skip[cols[ci]] = true;
+			ci = ci + 1;
+		end
+		cols = GetSnowWrapTundraColumns(iW);
+		ci = 1;
+		while ci <= #cols do
+			skip[cols[ci]] = true;
+			ci = ci + 1;
+		end
+		local extraHills = {};
+		local y = 0;
+		while y < iH do
+			local x = 0;
+			while x < iW do
+				local i = y * iW + x + 1;
+				if skip[x] ~= true and self.playerCollisionData[i] ~= true then
+					local plot = Map.GetPlot(x, y);
+					if plot ~= nil
+						and plot:GetPlotType() == PlotTypes.PLOT_HILLS
+						and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+						and plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+						table.insert(extraHills, i);
+					end
+				end
+				x = x + 1;
+			end
+			y = y + 1;
+		end
+		local hi = 1;
+		while hi <= #extraHills do
+			table.insert(self.extra_deer_list, extraHills[hi]);
+			hi = hi + 1;
+		end
+		self.extra_deer_list = GetShuffledCopyOfTable(self.extra_deer_list);
+	end
 	if IsSnowBarrier() == false then
 		return
 	end
@@ -2238,6 +2388,7 @@ function AddWetlandRiverDesert()
 		end
 		local roll = Map.Rand(totalWeight, "Wetland River Desert");
 		i = 1;
+		local picked = false;
 		while i <= #remaining do
 			local neigh = 0;
 			local d = 0;
@@ -2258,10 +2409,16 @@ function AddWetlandRiverDesert()
 				remaining[i]:SetTerrainType(TerrainTypes.TERRAIN_DESERT, false, false);
 				table.remove(remaining, i);
 				placed = placed + 1;
+				picked = true;
 				break
 			end
 			roll = roll - w;
 			i = i + 1;
+		end
+		if picked == false then
+			remaining[#remaining]:SetTerrainType(TerrainTypes.TERRAIN_DESERT, false, false);
+			table.remove(remaining, #remaining);
+			placed = placed + 1;
 		end
 	end
 	print("Wetland river desert:", placed, "/", n);
@@ -3258,6 +3415,7 @@ function AddSnowForests()
 		end
 		local roll = Map.Rand(totalWeight, "Barrier Forest Cluster");
 		i = 1;
+		local picked = false;
 		while i <= #remaining do
 			local neigh = CountSnowForestNeighbors(remaining[i]);
 			local w = 1;
@@ -3270,10 +3428,16 @@ function AddSnowForests()
 				remaining[i]:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
 				table.remove(remaining, i);
 				placed = placed + 1;
+				picked = true;
 				break
 			end
 			roll = roll - w;
 			i = i + 1;
+		end
+		if picked == false then
+			remaining[#remaining]:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+			table.remove(remaining, #remaining);
+			placed = placed + 1;
 		end
 	end
 	print("Barrier forests:", placed, "/", n);
@@ -3337,6 +3501,7 @@ end
 ------------------------------------------------------------------------------
 local wastelandWaterDist = {};
 function AddWastelandWaterLayout()
+	DBG("AddWastelandWaterLayout enter");
 	wastelandWaterDist = {};
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "wasteland" then
@@ -3424,7 +3589,7 @@ function AddWastelandWaterLayout()
 		end
 		y = y + 1;
 	end
-	local desertCut = maxDist - 1;
+	local desertCut = maxDist - 3;
 	if desertCut < 3 then
 		desertCut = 3;
 	end
@@ -3489,6 +3654,7 @@ function AddWastelandWaterLayout()
 		y = y + 1;
 	end
 	print("Wasteland water layout fertile:", nFertile, " desert:", nDesert, " maxDist:", maxDist);
+	DBG("AddWastelandWaterLayout done fertile=" .. tostring(nFertile) .. " desert=" .. tostring(nDesert) .. " maxDist=" .. tostring(maxDist));
 end
 ------------------------------------------------------------------------------
 function CountFeatureNeighbors(plot, featureType)
@@ -3530,6 +3696,7 @@ function PlaceClusteredFeature(remaining, featureType, pct, randName)
 		end
 		local roll = Map.Rand(totalWeight, randName);
 		i = 1;
+		local picked = false;
 		while i <= #remaining do
 			local neigh = CountFeatureNeighbors(remaining[i], featureType);
 			local w = 1;
@@ -3542,10 +3709,16 @@ function PlaceClusteredFeature(remaining, featureType, pct, randName)
 				remaining[i]:SetFeatureType(featureType, -1);
 				table.remove(remaining, i);
 				placed = placed + 1;
+				picked = true;
 				break
 			end
 			roll = roll - w;
 			i = i + 1;
+		end
+		if picked == false then
+			remaining[#remaining]:SetFeatureType(featureType, -1);
+			table.remove(remaining, #remaining);
+			placed = placed + 1;
 		end
 	end
 	return placed, n
@@ -3567,6 +3740,7 @@ function AddWastelandFallout()
 	if cfg == nil or cfg.kind ~= "wasteland" then
 		return
 	end
+	DBG("AddWastelandFallout enter");
 	local falloutType = FeatureTypes.FEATURE_FALLOUT;
 	if falloutType == nil then
 		falloutType = GameInfoTypes["FEATURE_FALLOUT"];
@@ -3631,9 +3805,13 @@ function AddWastelandFallout()
 		end
 		y = y + 1;
 	end
+	DBG("AddWastelandFallout lists barrier=" .. tostring(#barrierPlots) .. " near=" .. tostring(#nearPlots) .. " far=" .. tostring(#farPlots));
 	local bPlaced, bN = PlaceClusteredFeature(barrierPlots, falloutType, cfg.falloutBarrierPct, "Wasteland Barrier Fallout");
+	DBG("AddWastelandFallout barrier placed=" .. tostring(bPlaced) .. "/" .. tostring(bN));
 	local nPlaced, nN = PlaceClusteredFeature(nearPlots, falloutType, cfg.falloutPlayableNearPct, "Wasteland Near Fallout");
+	DBG("AddWastelandFallout near placed=" .. tostring(nPlaced) .. "/" .. tostring(nN));
 	local fPlaced, fN = PlaceClusteredFeature(farPlots, falloutType, cfg.falloutPlayableFarPct, "Wasteland Far Fallout");
+	DBG("AddWastelandFallout far placed=" .. tostring(fPlaced) .. "/" .. tostring(fN));
 	print("Wasteland fallout barrier:", bPlaced, "/", bN, " near:", nPlaced, "/", nN, " far:", fPlaced, "/", fN);
 end
 ------------------------------------------------------------------------------
@@ -4079,7 +4257,12 @@ function StartPlotSystem()
 	start_plot_database:PlaceNaturalWonders(wonderargs)
 
 	DBG("DBG: Placing Resources and City States.");
-	start_plot_database:PlaceResourcesAndCityStates()
+	local prcsOk, prcsErr = pcall(function()
+		start_plot_database:PlaceResourcesAndCityStates();
+	end);
+	if prcsOk == false then
+		DBG("PlaceResourcesAndCityStates ERROR: " .. tostring(prcsErr));
+	end
 
 	DBG("DBG: StripBarrierResources");
 	StripBarrierResources();
@@ -4087,6 +4270,9 @@ function StartPlotSystem()
 	PlaceDesertTundraFrontResources();
 	DBG("DBG: PlaceDesertMainlandResourceBoost");
 	PlaceDesertMainlandResourceBoost();
+	pcall(function()
+		start_plot_database:AddForestToResource();
+	end);
 	DBG("DBG: AddSnowForests");
 	AddSnowForests();
 	DBG("DBG: AddBarrierOases");
