@@ -1,46 +1,4 @@
 ------------------------------------------------------------------------------
-local _dbgPath = nil;
-local function DbgLogPath()
-	if _dbgPath ~= nil then
-		return _dbgPath;
-	end
-	_dbgPath = "weevee_dbg.log";
-	if os and os.getenv then
-		local home = os.getenv("USERPROFILE") or os.getenv("HOME") or "";
-		if home ~= "" then
-			_dbgPath = home .. "\\Documents\\My Games\\Sid Meier's Civilization 5\\Logs\\weevee_dbg.log";
-		end
-	end
-	return _dbgPath;
-end
-function DBGReset()
-	local path = DbgLogPath();
-	if not (io and io.open) then
-		return
-	end
-	pcall(function()
-		local f = io.open(path, "w");
-		if f then
-			f:write("weevee dbg start\n");
-			f:close();
-		end
-	end);
-end
-function DBG(msg)
-	print(msg);
-	if not (io and io.open) then
-		return
-	end
-	pcall(function()
-		local f = io.open(DbgLogPath(), "a");
-		if f then
-			f:write(tostring(msg));
-			f:write("\n");
-			f:close();
-		end
-	end);
-end
-------------------------------------------------------------------------------
 --	FILE:	 West_vs_East.lua
 --	AUTHOR:  Bob Thomas
 --	PURPOSE: Regional map script - Designed to pit two teams against each other
@@ -431,40 +389,6 @@ function AssignStartingPlots:ProcessResourceList(frequency, impact_table_number,
 	return ProcessResourceListVanilla(self, frequency, impact_table_number, plot_list, resources_to_place);
 end
 ------------------------------------------------------------------------------
-local PlaceStrategicAndBonusVanilla = AssignStartingPlots.PlaceStrategicAndBonusResources;
-function AssignStartingPlots:PlaceStrategicAndBonusResources()
-	DBG("PRCS PlaceStrategicAndBonusResources enter");
-	PlaceStrategicAndBonusVanilla(self);
-	DBG("PRCS PlaceStrategicAndBonusResources done");
-end
-------------------------------------------------------------------------------
-function AssignStartingPlots:PlaceResourcesAndCityStates()
-	local function step(name, fn)
-		DBG("PRCS " .. name);
-		local ok, err = pcall(fn, self);
-		if not ok then
-			DBG("PRCS ERROR in " .. name .. ": " .. tostring(err));
-		end
-	end
-	step("AssignLuxuryRoles", self.AssignLuxuryRoles);
-	step("PlaceCityStates", self.PlaceCityStates);
-	step("GenerateGlobalResourcePlotLists", self.GenerateGlobalResourcePlotLists);
-	step("PlaceLuxuries", self.PlaceLuxuries);
-	step("PlaceStrategicAndBonusResources", self.PlaceStrategicAndBonusResources);
-	step("NormalizeCityStateLocations", self.NormalizeCityStateLocations);
-	step("AddForestToResource", self.AddForestToResource);
-	step("FixSugarJungles", self.FixSugarJungles);
-	DBG("PRCS RecalculateAreas");
-	pcall(function()
-		Map.RecalculateAreas();
-	end);
-	DBG("PRCS PrintFinalResourceTotalsToLog");
-	pcall(function()
-		self:PrintFinalResourceTotalsToLog();
-	end);
-	DBG("PRCS done");
-end
-------------------------------------------------------------------------------
 local MIN_START_LANDMASS = 6;
 local EvaluateCandidatePlotVanilla = AssignStartingPlots.EvaluateCandidatePlot;
 function AssignStartingPlots:EvaluateCandidatePlot(plotIndex, region_type)
@@ -522,10 +446,8 @@ end
 ------------------------------------------------------------------------------
 -------------------------------------------------------------------------------
 function GetMapInitData(worldSize)
-	DBGReset();
 	ResolveBarrierSplit();
 	ResolveWrap();
-	DBG("GetMapInitData split=" .. tostring(ResolveBarrierSplit()) .. " wrap=" .. tostring(ResolveWrap()) .. " kind=" .. tostring((GetBarrierConfig() and GetBarrierConfig().kind) or "legacy"));
 	-- This function can reset map grid sizes or world wrap settings.
 	--
 	-- East vs West is an extremely compact multiplayer map type.
@@ -1725,7 +1647,6 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 end
 ------------------------------------------------------------------------------
 function GeneratePlotTypes()
-	DBG("DBG: GeneratePlotTypes start");
 	print("Setting Plot Types (Lua West vs East) ...");
 
 	local layered_world = MultilayeredFractal.Create();
@@ -1862,7 +1783,6 @@ function TerrainGenerator:GetLatitudeAtPlot(iX, iY)
 end
 ----------------------------------------------------------------------------------
 function GenerateTerrain()
-	DBG("DBG: GenerateTerrain start");
 	print("Generating Terrain (Lua West vs East) ...");
 	
 	-- Get Temperature setting input by user.
@@ -2473,16 +2393,11 @@ function AddFeatures()
 	end
 	local featuregen = FeatureGenerator.Create(args);
 
-	DBG("DBG: before AddWastelandWaterLayout");
 	AddWastelandWaterLayout();
-	DBG("DBG: before AddWetlandRiverDesert");
 	AddWetlandRiverDesert();
 	-- false = flatten coastal mountains to hills. Snow Wrap keeps peaks on water.
-	DBG("DBG: before AddFeatures");
 	featuregen:AddFeatures(IsSnowWrapX());
-	DBG("DBG: before AddDesertJungleBlob");
 	AddDesertJungleBlob();
-	DBG("DBG: after AddDesertJungleBlob");
 end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
@@ -2769,7 +2684,6 @@ function AddRivers()
 
 	-- Customization for Skirmish, to keep river starts away from buffer zone in middle columns of map, and set river "original flow direction".
 	local iW, iH = Map.GetGridSize()
-	DBG("DBG: AddRivers start");
 	print("Skirmish - Adding Rivers");
 	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT)
 	local snowRiverSkip = {};
@@ -3518,7 +3432,6 @@ end
 ------------------------------------------------------------------------------
 local wastelandWaterDist = {};
 function AddWastelandWaterLayout()
-	DBG("AddWastelandWaterLayout enter");
 	wastelandWaterDist = {};
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "wasteland" then
@@ -3671,7 +3584,6 @@ function AddWastelandWaterLayout()
 		y = y + 1;
 	end
 	print("Wasteland water layout fertile:", nFertile, " desert:", nDesert, " maxDist:", maxDist);
-	DBG("AddWastelandWaterLayout done fertile=" .. tostring(nFertile) .. " desert=" .. tostring(nDesert) .. " maxDist=" .. tostring(maxDist));
 end
 ------------------------------------------------------------------------------
 function CountFeatureNeighbors(plot, featureType)
@@ -3757,7 +3669,6 @@ function AddWastelandFallout()
 	if cfg == nil or cfg.kind ~= "wasteland" then
 		return
 	end
-	DBG("AddWastelandFallout enter");
 	local falloutType = FeatureTypes.FEATURE_FALLOUT;
 	if falloutType == nil then
 		falloutType = GameInfoTypes["FEATURE_FALLOUT"];
@@ -3822,13 +3733,9 @@ function AddWastelandFallout()
 		end
 		y = y + 1;
 	end
-	DBG("AddWastelandFallout lists barrier=" .. tostring(#barrierPlots) .. " near=" .. tostring(#nearPlots) .. " far=" .. tostring(#farPlots));
 	local bPlaced, bN = PlaceClusteredFeature(barrierPlots, falloutType, cfg.falloutBarrierPct, "Wasteland Barrier Fallout");
-	DBG("AddWastelandFallout barrier placed=" .. tostring(bPlaced) .. "/" .. tostring(bN));
 	local nPlaced, nN = PlaceClusteredFeature(nearPlots, falloutType, cfg.falloutPlayableNearPct, "Wasteland Near Fallout");
-	DBG("AddWastelandFallout near placed=" .. tostring(nPlaced) .. "/" .. tostring(nN));
 	local fPlaced, fN = PlaceClusteredFeature(farPlots, falloutType, cfg.falloutPlayableFarPct, "Wasteland Far Fallout");
-	DBG("AddWastelandFallout far placed=" .. tostring(fPlaced) .. "/" .. tostring(fN));
 	print("Wasteland fallout barrier:", bPlaced, "/", bN, " near:", nPlaced, "/", nN, " far:", fPlaced, "/", fN);
 end
 ------------------------------------------------------------------------------
@@ -4215,7 +4122,6 @@ function getMirroredPlot(plot)
 	local iW, iH = Map.GetGridSize();
 	local x = iW - plot:GetX() - 1;
 	local y = iH - plot:GetY() - 1;
-	print("mirror x/y=",x,y);
 	local mirrorPlot = Map.GetPlot(x, y);
 	return mirrorPlot;
 end
@@ -4231,10 +4137,8 @@ function StartPlotSystem()
 		res = 1 + Map.Rand(3, "Random Resources Option - Lua");
 	end
 
-	DBG("DBG: Creating start plot database.");
 	local start_plot_database = AssignStartingPlots.Create()
 
-	DBG("DBG: Dividing the map in to Regions.");
 	print("Resource Setting: ", res);
 	local args = {
 		resources = res,
@@ -4242,13 +4146,10 @@ function StartPlotSystem()
 	start_plot_database:GenerateRegions()
 
 	-- need a way to add the middle split options here
-	DBG("DBG: Setting divide section of map");
 	SetDivide()
 
-	DBG("DBG: Choosing start locations for civilizations.");
 	start_plot_database:ChooseLocations()
 	
-	DBG("DBG: Normalizing start locations and assigning them to Players.");
 	start_plot_database:BalanceAndAssign()
 
 	--print("Placing Natural Wonders.");
@@ -4273,32 +4174,16 @@ function StartPlotSystem()
 
 	start_plot_database:PlaceNaturalWonders(wonderargs)
 
-	DBG("DBG: Placing Resources and City States.");
-	local prcsOk, prcsErr = pcall(function()
-		start_plot_database:PlaceResourcesAndCityStates();
-	end);
-	if prcsOk == false then
-		DBG("PlaceResourcesAndCityStates ERROR: " .. tostring(prcsErr));
-	end
+	start_plot_database:PlaceResourcesAndCityStates();
 
-	DBG("DBG: StripBarrierResources");
 	StripBarrierResources();
-	DBG("DBG: PlaceDesertTundraFrontResources");
 	PlaceDesertTundraFrontResources();
-	DBG("DBG: PlaceDesertMainlandResourceBoost");
 	PlaceDesertMainlandResourceBoost();
-	pcall(function()
-		start_plot_database:AddForestToResource();
-	end);
-	DBG("DBG: AddSnowForests");
+	start_plot_database:AddForestToResource();
 	AddSnowForests();
-	DBG("DBG: AddBarrierOases");
 	AddBarrierOases();
-	DBG("DBG: AddWastelandFallout");
 	AddWastelandFallout();
-	DBG("DBG: AddWetlandBarrierFeatures");
 	AddWetlandBarrierFeatures();
-	DBG("DBG: post-processing done");
 	
 	if IsOldSnow() or IsSnowBarrier() then
 		local iW, iH = Map.GetGridSize()
