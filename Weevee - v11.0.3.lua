@@ -43,6 +43,14 @@ local mireBand = {};
 local peakDist = {};
 local peakNX = {};
 local peakNY = {};
+local peakMassif = {};
+local peakHillStyle = {};
+local peakHillT1 = {};
+local peakHillT2 = {};
+local peakHillT3 = {};
+local peakForestStyle = {};
+local nPeakMassifs = 0;
+local riverEdgeList = {};
 
 ------------------------------------------------------------------------------
 function GetResourceSetting()
@@ -197,8 +205,8 @@ function GetBarrierConfig()
 			oasisPctOfFlat = 0,
 			chaoticMountains = true,
 			falloutBarrierPct = 30,
-			falloutPlayableNearPct = 4,
-			falloutPlayableFarPct = 14,
+			falloutPlayableNearPct = 6,
+			falloutPlayableFarPct = 18,
 		};
 	end
 	if ops == SPLIT_WETLAND then
@@ -325,33 +333,237 @@ function WestHasSungodRegional(asp)
 	return false
 end
 ------------------------------------------------------------------------------
+function ApplyWastelandLuxuryWeights(self)
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local tundra = {};
+	local function add(id, w)
+		if id ~= nil then
+			table.insert(tundra, {id, w});
+		end
+	end
+	add(self.fur_ID, 40);
+	add(self.silver_ID, 40);
+	add(self.amber_ID, 40);
+	add(self.salt_ID, 40);
+	add(self.gold_ID, 40);
+	add(self.copper_ID, 40);
+	add(self.gems_ID, 40);
+	add(self.jade_ID, 40);
+	add(self.lapis_ID, 40);
+	add(self.whale_ID, 16);
+	add(self.crab_ID, 16);
+	self.luxury_region_weights[1] = tundra;
+	local t = 2;
+	while t <= 8 do
+		local list = self.luxury_region_weights[t];
+		if list ~= nil then
+			if self.whale_ID ~= nil then
+				table.insert(list, {self.whale_ID, 16});
+			end
+			if self.crab_ID ~= nil then
+				table.insert(list, {self.crab_ID, 16});
+			end
+		end
+		t = t + 1;
+	end
+end
+------------------------------------------------------------------------------
+local InitLuxuryWeightsVanilla = AssignStartingPlots.__InitLuxuryWeights;
+function AssignStartingPlots:__InitLuxuryWeights()
+	InitLuxuryWeightsVanilla(self);
+	ApplyWastelandLuxuryWeights(self);
+end
+------------------------------------------------------------------------------
 local AssignLuxuryToRegionVanilla = AssignStartingPlots.AssignLuxuryToRegion;
 function AssignStartingPlots:AssignLuxuryToRegion(region_number)
 	local cfg = GetBarrierConfig();
-	if cfg == nil or cfg.kind ~= "desert" or WestHasSungodRegional(self) == false then
-		return AssignLuxuryToRegionVanilla(self, region_number);
-	end
-	local sungod = GetSungodLuxuryIDs(self);
-	local saved = {};
-	local i = 1;
-	while i <= #sungod do
-		local id = sungod[i];
-		saved[id] = self.luxury_assignment_count[id];
-		if saved[id] == nil then
-			saved[id] = 0;
+	local savedCoast = nil;
+	if cfg ~= nil and cfg.kind == "wasteland" then
+		if self.startLocationConditions[region_number] ~= nil and self.startLocationConditions[region_number][1] == true then
+			if self.regionTerrainCounts[region_number] ~= nil then
+				savedCoast = self.regionTerrainCounts[region_number][8];
+				if savedCoast == nil or savedCoast < 90 then
+					self.regionTerrainCounts[region_number][8] = 90;
+				else
+					savedCoast = nil;
+				end
+			end
 		end
-		self.luxury_assignment_count[id] = 3;
-		i = i + 1;
 	end
-	local use_this_ID = AssignLuxuryToRegionVanilla(self, region_number);
-	i = 1;
-	while i <= #sungod do
-		local id = sungod[i];
-		self.luxury_assignment_count[id] = saved[id];
-		i = i + 1;
+	local use_this_ID;
+	if cfg == nil or cfg.kind ~= "desert" or WestHasSungodRegional(self) == false then
+		use_this_ID = AssignLuxuryToRegionVanilla(self, region_number);
+	else
+		local sungod = GetSungodLuxuryIDs(self);
+		local saved = {};
+		local i = 1;
+		while i <= #sungod do
+			local id = sungod[i];
+			saved[id] = self.luxury_assignment_count[id];
+			if saved[id] == nil then
+				saved[id] = 0;
+			end
+			self.luxury_assignment_count[id] = 3;
+			i = i + 1;
+		end
+		use_this_ID = AssignLuxuryToRegionVanilla(self, region_number);
+		i = 1;
+		while i <= #sungod do
+			local id = sungod[i];
+			self.luxury_assignment_count[id] = saved[id];
+			i = i + 1;
+		end
+		print("Sungod regional cap: blocked extra citrus/cocoa/olives/coconut for region", region_number);
 	end
-	print("Sungod regional cap: blocked extra citrus/cocoa/olives/coconut for region", region_number);
+	if savedCoast ~= nil then
+		self.regionTerrainCounts[region_number][8] = savedCoast;
+	end
 	return use_this_ID;
+end
+------------------------------------------------------------------------------
+local GetIndicesForLuxuryTypeVanilla = AssignStartingPlots.GetIndicesForLuxuryType;
+function AssignStartingPlots:GetIndicesForLuxuryType(resource_ID)
+	local p, s, t, q = GetIndicesForLuxuryTypeVanilla(self, resource_ID);
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return p, s, t, q;
+	end
+	if resource_ID == self.gems_ID then
+		return 7, 4, 14, 5;
+	end
+	if resource_ID == self.gold_ID
+		or resource_ID == self.jade_ID
+		or resource_ID == self.lapis_ID
+		or resource_ID == self.amber_ID
+		or resource_ID == self.copper_ID then
+		if p ~= 14 and s ~= 14 and t ~= 14 and q ~= 14 then
+			if q == nil or q < 1 then
+				q = 14;
+			elseif t == nil or t < 1 then
+				t = 14;
+			else
+				q = 14;
+			end
+		end
+	end
+	return p, s, t, q;
+end
+------------------------------------------------------------------------------
+local GetRegionLuxuryTargetNumbersVanilla = AssignStartingPlots.GetRegionLuxuryTargetNumbers;
+function AssignStartingPlots:GetRegionLuxuryTargetNumbers()
+	local src = GetRegionLuxuryTargetNumbersVanilla(self);
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return src;
+	end
+	local out = {};
+	local i = 1;
+	while i <= #src do
+		local v = src[i];
+		if v ~= nil and v > 0 then
+			v = v + 1;
+		end
+		out[i] = v;
+		i = i + 1;
+	end
+	return out;
+end
+------------------------------------------------------------------------------
+function WastelandCoastalLuxuryIDs(asp)
+	local ids = {};
+	if asp.whale_ID ~= nil then
+		table.insert(ids, asp.whale_ID);
+	end
+	if asp.pearls_ID ~= nil then
+		table.insert(ids, asp.pearls_ID);
+	end
+	if asp.crab_ID ~= nil then
+		table.insert(ids, asp.crab_ID);
+	end
+	if asp.coral_ID ~= nil then
+		table.insert(ids, asp.coral_ID);
+	end
+	return ids;
+end
+------------------------------------------------------------------------------
+function TableRemoveValue(t, id)
+	local i = 1;
+	while i <= #t do
+		if t[i] == id then
+			table.remove(t, i);
+			return true
+		end
+		i = i + 1;
+	end
+	return false
+end
+------------------------------------------------------------------------------
+function WastelandForceCoastalLuxuryRoles(asp)
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local coastal = WastelandCoastalLuxuryIDs(asp);
+	if #coastal < 1 then
+		return
+	end
+	local shuffled = GetShuffledCopyOfTable(coastal);
+	local need = 2 + Map.Rand(3, "Wasteland coastal lux types");
+	if need > #shuffled then
+		need = #shuffled;
+	end
+	local picked = {};
+	local i = 1;
+	while i <= #shuffled do
+		local id = shuffled[i];
+		if TestMembership(asp.resourceIDs_assigned_to_regions, id) or TestMembership(asp.resourceIDs_assigned_to_cs, id) then
+			table.insert(picked, id);
+		end
+		i = i + 1;
+	end
+	i = 1;
+	while i <= #shuffled and #picked < need do
+		local id = shuffled[i];
+		if TestMembership(picked, id) == false then
+			table.insert(picked, id);
+			if TestMembership(asp.resourceIDs_assigned_to_random, id) == false then
+				TableRemoveValue(asp.resourceIDs_not_being_used, id);
+				table.insert(asp.resourceIDs_assigned_to_random, id);
+				asp.iNumTypesRandom = asp.iNumTypesRandom + 1;
+				if asp.iNumTypesDisabled > 0 then
+					asp.iNumTypesDisabled = asp.iNumTypesDisabled - 1;
+				end
+			end
+		end
+		i = i + 1;
+	end
+	i = 1;
+	while i <= #shuffled do
+		local id = shuffled[i];
+		if TestMembership(picked, id) == false
+			and TestMembership(asp.resourceIDs_assigned_to_regions, id) == false
+			and TestMembership(asp.resourceIDs_assigned_to_cs, id) == false then
+			if TableRemoveValue(asp.resourceIDs_assigned_to_random, id) then
+				table.insert(asp.resourceIDs_not_being_used, id);
+				if asp.iNumTypesRandom > 0 then
+					asp.iNumTypesRandom = asp.iNumTypesRandom - 1;
+				end
+				asp.iNumTypesDisabled = asp.iNumTypesDisabled + 1;
+			end
+		end
+		i = i + 1;
+	end
+	asp.wastelandForcedCoastalLux = picked;
+	print("Wasteland forced coastal lux types:", #picked);
+end
+------------------------------------------------------------------------------
+local AssignLuxuryRolesVanilla = AssignStartingPlots.AssignLuxuryRoles;
+function AssignStartingPlots:AssignLuxuryRoles()
+	AssignLuxuryRolesVanilla(self);
+	WastelandForceCoastalLuxuryRoles(self);
 end
 ------------------------------------------------------------------------------
 local ProcessResourceListVanilla = AssignStartingPlots.ProcessResourceList;
@@ -389,7 +601,7 @@ function AssignStartingPlots:ProcessResourceList(frequency, impact_table_number,
 						if bonus < 0.1 then
 							bonus = 1;
 						end
-						local totalWant = math.ceil(nFlat / (12 * bonus * 1.18));
+						local totalWant = math.ceil(nFlat / (12 * bonus * 1.311));
 						local hillWant = math.floor(totalWant * hillShare + 0.5);
 						if hillWant < 1 then
 							hillWant = 1;
@@ -399,32 +611,19 @@ function AssignStartingPlots:ProcessResourceList(frequency, impact_table_number,
 					end
 				elseif plot_list == self.tundra_flat_no_feature then
 					if table.maxn(self.extra_deer_list) > 0 then
-						frequency = frequency * 1.18 / (1 - hillShare);
+						frequency = frequency * 1.311 / (1 - hillShare);
 					else
-						frequency = frequency * 1.18;
+						frequency = frequency * 1.311;
 					end
 				else
-					frequency = frequency * 1.18;
+					frequency = frequency * 1.311;
 				end
 			end
 		elseif cfg.kind == "peaks" then
 			local i = 1;
 			while resources_to_place[i] ~= nil do
-				local id = resources_to_place[i][1];
-				if id == self.wheat_ID then
-					resources_to_place[i][3] = 32;
-				elseif id == self.bison_ID then
-					resources_to_place[i][3] = 168;
-				elseif self.maize_ID ~= nil and id == self.maize_ID then
-					resources_to_place[i][3] = 28;
-				elseif id == self.cow_ID then
-					resources_to_place[i][3] = 172;
-				elseif id == self.deer_ID then
-					frequency = frequency * 0.72;
-				elseif id == self.horse_ID then
-					frequency = frequency * 0.82;
-				elseif id == self.iron_ID then
-					resources_to_place[i][3] = math.floor(resources_to_place[i][3] * 1.45 + 0.5);
+				if resources_to_place[i][1] == self.horse_ID then
+					frequency = frequency * 1.176;
 				end
 				i = i + 1;
 			end
@@ -432,6 +631,7 @@ function AssignStartingPlots:ProcessResourceList(frequency, impact_table_number,
 			local i = 1;
 			while resources_to_place[i] ~= nil do
 				if resources_to_place[i][1] == self.deer_ID then
+					frequency = frequency * 1.111;
 					if plot_list == self.extra_deer_list then
 						frequency = frequency * 1.8;
 					elseif plot_list == self.tundra_flat_no_feature then
@@ -559,6 +759,60 @@ function PeakEnsureStartHills(asp)
 				i = i + 1;
 			end
 			print("Peaks start hills region", r, " had", nHill, " added", made);
+		end
+		r = r + 1;
+	end
+end
+------------------------------------------------------------------------------
+local START_TILE_RESOURCE_CHANCE = 8;
+function MaybePlaceStartTileResource(asp)
+	if asp == nil or asp.startingPlots == nil then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local r = 1;
+	while asp.startingPlots[r] ~= nil do
+		local sp = asp.startingPlots[r];
+		local sx = sp[1];
+		local sy = sp[2];
+		local skipMirrorDest = (DEF_MIRRORED == 1 and sx >= iW / 2);
+		if not skipMirrorDest and Map.Rand(100, "Start tile resource - Lua") < START_TILE_RESOURCE_CHANCE then
+			local startPlot = Map.GetPlot(sx, sy);
+			if startPlot ~= nil and startPlot:GetResourceType(-1) == -1 then
+				local candidates = {};
+				local y = 0;
+				while y < iH do
+					local x = 0;
+					while x < iW do
+						local d = Map.PlotDistance(sx, sy, x, y);
+						if d >= 1 and d <= 3 then
+							local plot = Map.GetPlot(x, y);
+							if plot ~= nil then
+								local resID = plot:GetResourceType(-1);
+								if resID ~= -1 then
+									local usage = Game.GetResourceUsageType(resID);
+									if usage == ResourceUsageTypes.RESOURCEUSAGE_BONUS or usage == ResourceUsageTypes.RESOURCEUSAGE_LUXURY then
+										if startPlot:CanHaveResource(resID) then
+											table.insert(candidates, plot);
+										end
+									end
+								end
+							end
+						end
+						x = x + 1;
+					end
+					y = y + 1;
+				end
+				local n = #candidates;
+				if n > 0 then
+					local src = candidates[1 + Map.Rand(n, "Start tile resource pick - Lua")];
+					local resID = src:GetResourceType(-1);
+					local num = src:GetNumResource();
+					src:SetResourceType(-1);
+					startPlot:SetResourceType(resID, num);
+					print("Start tile resource region", r, " moved", resID, "qty", num);
+				end
+			end
 		end
 		r = r + 1;
 	end
@@ -963,52 +1217,42 @@ function PlacePeaksFrontClusters(plotTypes, iW, iH, xCenter, density)
 	if nClusters > 4 then
 		nClusters = 4;
 	end
-	local minGap = 7;
-	if iH < 24 then
-		minGap = 5;
+	local yLo = 2;
+	local yHi = iH - 3;
+	if yHi < yLo then
+		yHi = yLo;
 	end
-	local ys = {};
-	local y = 2;
-	while y < iH - 2 do
-		table.insert(ys, y);
-		y = y + 1;
-	end
-	ys = GetShuffledCopyOfTable(ys);
+	local span = yHi - yLo + 1;
 	local seeds = {};
-	local yi = 1;
-	while #seeds < nClusters and yi <= #ys do
-		local sy = ys[yi];
-		yi = yi + 1;
-		local ok = true;
-		local si = 1;
-		while si <= #seeds do
-			local dy = sy - seeds[si];
-			if dy < 0 then
-				dy = 0 - dy;
-			end
-			if dy < minGap then
-				ok = false;
-				break
-			end
-			si = si + 1;
+	local c = 1;
+	while c <= nClusters do
+		local slot = yLo + math.floor(((c - 0.5) * span) / nClusters);
+		local sy = slot + Map.Rand(5, "Peaks Front Jitter") - 2;
+		if sy < yLo then
+			sy = yLo;
 		end
-		if ok then
-			table.insert(seeds, sy);
+		if sy > yHi then
+			sy = yHi;
 		end
+		table.insert(seeds, sy);
+		c = c + 1;
 	end
 	local evenN = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
 	local oddN = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
 	local si = 1;
 	while si <= #seeds do
 		local sy = seeds[si];
-		local sx = xCenter;
+		local sx = xMax;
+		if xCenter < mid * 0.5 then
+			sx = xMin;
+		end
 		if sx < xMin then
 			sx = xMin;
 		end
 		if sx > xMax then
 			sx = xMax;
 		end
-		local target = 2 + Map.Rand(3, "Peaks Front Cluster");
+		local target = 2 + Map.Rand(2, "Peaks Front Cluster");
 		PlaceMirroredMountain(plotTypes, iW, iH, sx, sy);
 		local qx = {sx};
 		local qy = {sy};
@@ -1314,6 +1558,102 @@ function IsCappedSeaResource(res)
 	return false
 end
 ------------------------------------------------------------------------------
+function GetWastelandSaltCoastPlotIndices(asp)
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local maxX = iW - 1;
+	if DEF_MIRRORED == 1 then
+		maxX = math.floor(iW * 0.5);
+	end
+	local list = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x <= maxX do
+			if skip[x] ~= true then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:GetPlotType() == PlotTypes.PLOT_OCEAN
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_COAST
+					and plot:IsLake() == false
+					and plot:IsAdjacentToLand()
+					and plot:GetResourceType(-1) == -1 then
+					local feat = plot:GetFeatureType();
+					if feat ~= FeatureTypes.FEATURE_ICE and (asp == nil or asp.feature_atoll == nil or feat ~= asp.feature_atoll) then
+						table.insert(list, y * iW + x + 1);
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	return list;
+end
+------------------------------------------------------------------------------
+function CountWastelandResource(resID)
+	local n = 0;
+	if resID == nil then
+		return 0
+	end
+	local iW, iH = Map.GetGridSize();
+	local maxX = iW - 1;
+	if DEF_MIRRORED == 1 then
+		maxX = math.floor(iW * 0.5);
+	end
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x <= maxX do
+			local plot = Map.GetPlot(x, y);
+			if plot ~= nil and plot:GetResourceType(-1) == resID then
+				n = n + 1;
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	return n
+end
+------------------------------------------------------------------------------
+function ForceWastelandCoastalLuxuries(asp)
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	if asp == nil then
+		return
+	end
+	local picked = asp.wastelandForcedCoastalLux;
+	if picked == nil or #picked < 1 then
+		return
+	end
+	local want = 5;
+	local i = 1;
+	while i <= #picked do
+		local id = picked[i];
+		local have = CountWastelandResource(id);
+		if have < want then
+			local plots = GetShuffledCopyOfTable(GetWastelandSaltCoastPlotIndices(asp));
+			local left = asp:PlaceSpecificNumberOfResources(id, 1, want - have, 1, 2, 1, 2, plots);
+			print("Wasteland coastal lux force id", id, "had", have, "left", left);
+		end
+		i = i + 1;
+	end
+end
+------------------------------------------------------------------------------
 function CapSeaResources()
 	local cap = 17;
 	local iW, iH = Map.GetGridSize();
@@ -1322,6 +1662,11 @@ function CapSeaResources()
 		maxX = iW * 0.5;
 	end
 	local fishID = GameInfoTypes["RESOURCE_FISH"];
+	local protectCoastalLux = false;
+	local cfg = GetBarrierConfig();
+	if cfg ~= nil and cfg.kind == "wasteland" then
+		protectCoastalLux = true;
+	end
 	local fishPlots = {};
 	local otherPlots = {};
 	local y = 0;
@@ -1334,7 +1679,7 @@ function CapSeaResources()
 				if IsCappedSeaResource(res) then
 					if res == fishID then
 						table.insert(fishPlots, plot);
-					else
+					elseif protectCoastalLux == false then
 						table.insert(otherPlots, plot);
 					end
 				end
@@ -2008,7 +2353,10 @@ function GeneratePlotTypes()
 		local iW, iH = Map.GetGridSize();
 		local firstRingYIsEven = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
 		local firstRingYIsOdd = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
-		local function applyFoothills(xStart, xEnd)
+		local function applyFoothills(xStart, xEnd, chance)
+			if chance == nil then
+				chance = 100;
+			end
 			for x = xStart, xEnd do
 				for y = 1, iH - 2 do
 					local plot = Map.GetPlot(x, y)
@@ -2022,13 +2370,19 @@ function GeneratePlotTypes()
 						else
 							search_table = firstRingYIsOdd;
 						end
+						local nearMtn = false;
 						for loop, plot_adjustments in ipairs(search_table) do
 							local searchX = x + plot_adjustments[1];
 							local searchY = y + plot_adjustments[2];
 							local searchPlot = Map.GetPlot(searchX, searchY)
 							if searchPlot ~= nil and searchPlot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
-								plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false)
+								nearMtn = true;
 								break
+							end
+						end
+						if nearMtn then
+							if chance >= 100 or Map.Rand(100, "Front Foothill") < chance then
+								plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false)
 							end
 						end
 					end
@@ -2038,22 +2392,24 @@ function GeneratePlotTypes()
 		local fLo = iW / 2 - 5;
 		local fHi = iW / 2 + 4;
 		local cfg = GetBarrierConfig();
+		local foothillChance = 100;
 		if cfg ~= nil and cfg.kind == "peaks" then
 			fLo = iW / 2 - 6;
 			fHi = iW / 2 + 5;
+			foothillChance = 50;
 		elseif cfg ~= nil and cfg.chaoticMountains then
 			fLo = iW / 2 - 7;
 			fHi = iW / 2 + 6;
 		end
-		applyFoothills(fLo, fHi)
+		applyFoothills(fLo, fHi, foothillChance)
 		if IsSnowWrapX() then
 			local x_wrap_west, x_wrap_east = GetSnowWrapLandMountainXs(iW);
 			local wPad = 1;
 			if cfg ~= nil and (cfg.chaoticMountains or cfg.kind == "peaks") then
 				wPad = 2;
 			end
-			applyFoothills(x_wrap_west - wPad, x_wrap_west + wPad)
-			applyFoothills(x_wrap_east - wPad, x_wrap_east + wPad)
+			applyFoothills(x_wrap_west - wPad, x_wrap_west + wPad, foothillChance)
+			applyFoothills(x_wrap_east - wPad, x_wrap_east + wPad, foothillChance)
 		end
 	end
 
@@ -2164,21 +2520,46 @@ function FeatureGenerator:AddForestsAtPlot(plot, iX, iY, lat)
 		return
 	end
 	if cfg ~= nil and cfg.kind == "peaks" then
-		if (self.forests:GetHeight(iX, iY) >= self.iForestLevel) or (self.forestclumps:GetHeight(iX, iY) >= self.iClumpLevel) then
-			local iW = Map.GetGridSize();
-			local di = iY * iW + iX + 1;
-			local d = peakDist[di];
-			if d == nil or d < 1 or d > 3 then
-				return
-			end
-			if plot:GetPlotType() ~= PlotTypes.PLOT_HILLS then
-				return
-			end
-			if plot:GetFeatureType() ~= FeatureTypes.NO_FEATURE then
-				return
-			end
-			plot:SetFeatureType(self.featureForest, -1)
+		local iW = Map.GetGridSize();
+		local di = iY * iW + iX + 1;
+		local d = peakDist[di];
+		local mid = peakMassif[di];
+		local fs = 2;
+		if mid ~= nil and peakForestStyle[mid] ~= nil then
+			fs = peakForestStyle[mid];
 		end
+		if fs == 3 then
+			return
+		end
+		if d == nil or d < 1 then
+			return
+		end
+		if plot:GetPlotType() ~= PlotTypes.PLOT_HILLS then
+			return
+		end
+		if plot:GetFeatureType() ~= FeatureTypes.NO_FEATURE then
+			return
+		end
+		local hit = (self.forests:GetHeight(iX, iY) >= self.iForestLevel) or (self.forestclumps:GetHeight(iX, iY) >= self.iClumpLevel);
+		if fs == 1 then
+			if d ~= 1 then
+				return
+			end
+			if hit == false then
+				return
+			end
+			if Map.Rand(100, "Peaks Forest Spec") >= 34 then
+				return
+			end
+		else
+			if d > 3 then
+				return
+			end
+			if hit == false then
+				return
+			end
+		end
+		plot:SetFeatureType(self.featureForest, -1)
 		return
 	end
 	if cfg == nil or cfg.kind ~= "wasteland" then
@@ -2749,7 +3130,9 @@ function AddFeatures()
 	AddDesertJungleBlob();
 	AddMireFeatures();
 	AddNorthIceArms();
+	AddPeaksMassifForests();
 	AddPeaksMeadows();
+	AddPeaksBackCoastForest();
 end
 ------------------------------------------------------------------------------
 ------------------------------------------------------------------------------
@@ -2822,6 +3205,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetWOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "W", riverID);
 		riverPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_NORTHEAST);
 		
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_NORTHEAST) then
@@ -2834,6 +3218,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetNWOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "NW", riverID);
 		-- riverPlot does not change
 	
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTHEAST) then
@@ -2850,6 +3235,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetNEOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "NE", riverID);
 		-- riverPlot does not change
 	
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTH) then
@@ -2866,6 +3252,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 		
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetWOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "W", riverID);
 		-- riverPlot does not change
 	
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_SOUTHWEST) then
@@ -2878,6 +3265,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 		
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetNWOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "NW", riverID);
 		-- riverPlot does not change
 
 	elseif (thisFlowDirection == FlowDirectionTypes.FLOWDIRECTION_NORTHWEST) then
@@ -2891,6 +3279,7 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 
 		_rivers[riverPlot] = riverID;
 		riverPlot:SetNEOfRiver(true, thisFlowDirection);
+		RecordRiverEdge(riverPlot, "NE", riverID);
 		riverPlot = PlotDirNoXWrap(riverPlot:GetX(), riverPlot:GetY(), DirectionTypes.DIRECTION_WEST);
 
 	else
@@ -3032,11 +3421,104 @@ function DoRiver(startPlot, thisFlowDirection, originalFlowDirection, riverID)
 	end
 end
 ------------------------------------------------------------------------------
+function RecordRiverEdge(plot, kind, riverID)
+	if plot == nil or riverID == nil then
+		return
+	end
+	if riverEdgeList[riverID] == nil then
+		riverEdgeList[riverID] = {};
+	end
+	table.insert(riverEdgeList[riverID], {plot:GetX(), plot:GetY(), kind});
+end
+------------------------------------------------------------------------------
+function RiverEdgeStillSet(plot, kind)
+	if plot == nil then
+		return false
+	end
+	if kind == "W" then
+		return plot:IsWOfRiver();
+	end
+	if kind == "NW" then
+		return plot:IsNWOfRiver();
+	end
+	if kind == "NE" then
+		return plot:IsNEOfRiver();
+	end
+	return false;
+end
+------------------------------------------------------------------------------
+function ClearRiverEdge(plot, kind)
+	if plot == nil then
+		return
+	end
+	if kind == "W" then
+		plot:SetWOfRiver(false, FlowDirectionTypes.NO_FLOWDIRECTION);
+	elseif kind == "NW" then
+		plot:SetNWOfRiver(false, FlowDirectionTypes.NO_FLOWDIRECTION);
+	elseif kind == "NE" then
+		plot:SetNEOfRiver(false, FlowDirectionTypes.NO_FLOWDIRECTION);
+	end
+end
+------------------------------------------------------------------------------
+function RiverEdgesTouchWater(edges)
+	local i = 1;
+	while i <= #edges do
+		local e = edges[i];
+		local plot = Map.GetPlot(e[1], e[2]);
+		if RiverEdgeStillSet(plot, e[3]) then
+			if plot:IsWater() then
+				return true
+			end
+			local d = 0;
+			while d < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(plot:GetX(), plot:GetY(), d);
+				if adj ~= nil and adj:IsWater() then
+					return true
+				end
+				d = d + 1;
+			end
+		end
+		i = i + 1;
+	end
+	return false;
+end
+------------------------------------------------------------------------------
+function CullShortRivers()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "peaks" then
+		return
+	end
+	local nDrop = 0;
+	local rid, edges;
+	for rid, edges in pairs(riverEdgeList) do
+		local n = 0;
+		local i = 1;
+		while i <= #edges do
+			local e = edges[i];
+			if RiverEdgeStillSet(Map.GetPlot(e[1], e[2]), e[3]) then
+				n = n + 1;
+			end
+			i = i + 1;
+		end
+		if n > 0 and n < 4 and RiverEdgesTouchWater(edges) == false then
+			i = 1;
+			while i <= #edges do
+				local e = edges[i];
+				ClearRiverEdge(Map.GetPlot(e[1], e[2]), e[3]);
+				i = i + 1;
+			end
+			nDrop = nDrop + 1;
+		end
+	end
+	print("Peaks short rivers dropped:", nDrop);
+end
+------------------------------------------------------------------------------
 function AddRivers()
 
 	-- Customization for Skirmish, to keep river starts away from buffer zone in middle columns of map, and set river "original flow direction".
 	local iW, iH = Map.GetGridSize()
 	print("Skirmish - Adding Rivers");
+	riverEdgeList = {};
 	local SplitOps = Map.GetCustomOption(OPT_CENTER_SPLIT)
 	local snowRiverSkip = {};
 	if IsOldSnow() or IsSnowBarrier() then
@@ -3709,8 +4191,53 @@ function SetDivide()
 			end
 		end
 	end
+	CapBarrierMountains();
 end
 
+------------------------------------------------------------------------------
+function CapBarrierMountains()
+	if IsOldSnow() == false and IsSnowBarrier() == false then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local tundra = {};
+	local tc = GetSnowWrapTundraColumns(iW);
+	local ti = 1;
+	while ti <= #tc do
+		tundra[tc[ti]] = true;
+		ti = ti + 1;
+	end
+	local snowCols = GetSnowWrapColumns(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local mtns = {};
+	local ci = 1;
+	while ci <= #snowCols do
+		local x = snowCols[ci];
+		if tundra[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+			local y = 0;
+			while y < iH do
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+					table.insert(mtns, plot);
+				end
+				y = y + 1;
+			end
+		end
+		ci = ci + 1;
+	end
+	local n = #mtns;
+	if n <= 4 then
+		print("Barrier mountains:", n);
+		return
+	end
+	mtns = GetShuffledCopyOfTable(mtns);
+	local k = 5;
+	while k <= n do
+		mtns[k]:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+		k = k + 1;
+	end
+	print("Barrier mountains capped:", n, "-> 4");
+end
 ------------------------------------------------------------------------------
 function CountSnowForestNeighbors(plot)
 	local n = 0;
@@ -4072,6 +4599,93 @@ function PickMirePlotNear(plots, tx, ty, maxDist)
 	return best;
 end
 ------------------------------------------------------------------------------
+function MireApplyBandTerrain(plot, band)
+	if plot == nil or plot:IsWater() then
+		return
+	end
+	if band == 1 then
+		if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+			plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+		end
+		plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+	elseif band == 2 then
+		if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+			plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+		end
+		if Map.Rand(100, "Mire Wood Plains") < 28 then
+			plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+		else
+			plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+		end
+	else
+		if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+			plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+		end
+		if plot:GetPlotType() == PlotTypes.PLOT_HILLS and Map.Rand(100, "Mire Fen Hill Keep") >= 12 then
+			plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+		end
+		plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
+	end
+end
+------------------------------------------------------------------------------
+function MireBleedFenWood(iW, iH, skip, mirrored)
+	local pass = 1;
+	while pass <= 1 do
+		local toWood = {};
+		local toFen = {};
+		local y = 0;
+		while y < iH do
+			local x = 0;
+			while x < iW do
+				if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+					local i = y * iW + x + 1;
+					local band = mireBand[i];
+					if band == 2 or band == 3 then
+						local d = 0;
+						while d < DirectionTypes.NUM_DIRECTION_TYPES do
+							local adj = PlotDirNoXWrap(x, y, d);
+							if adj ~= nil and adj:IsWater() == false then
+								local ax = adj:GetX();
+								local ay = adj:GetY();
+								if skip[ax] ~= true and ((not mirrored) or (ax <= iW * 0.5)) then
+									local ai = ay * iW + ax + 1;
+									local ab = mireBand[ai];
+									if band == 2 and ab == 3 and ay <= y then
+										if Map.Rand(100, "Mire Wood South") < 34 then
+											toWood[ai] = adj;
+										end
+									elseif band == 3 and ab == 2 and ay >= y then
+										if Map.Rand(100, "Mire Fen North") < 22 then
+											toFen[ai] = adj;
+										end
+									end
+								end
+							end
+							d = d + 1;
+						end
+					end
+				end
+				x = x + 1;
+			end
+			y = y + 1;
+		end
+		local i, plot;
+		for i, plot in pairs(toWood) do
+			if toFen[i] == nil and mireBand[i] == 3 then
+				mireBand[i] = 2;
+				MireApplyBandTerrain(plot, 2);
+			end
+		end
+		for i, plot in pairs(toFen) do
+			if toWood[i] == nil and mireBand[i] == 2 then
+				mireBand[i] = 3;
+				MireApplyBandTerrain(plot, 3);
+			end
+		end
+		pass = pass + 1;
+	end
+end
+------------------------------------------------------------------------------
 function AddMireBands()
 	mireBand = {};
 	local cfg = GetBarrierConfig();
@@ -4082,12 +4696,14 @@ function AddMireBands()
 	local skip = FillMireSkip(iW);
 	local mirrored = (DEF_MIRRORED == 1);
 	local frac = Fractal.Create(iW, iH, 5, Map.GetFractalFlags(), -1, -1);
+	local fracFen = Fractal.Create(iW, iH, 4, Map.GetFractalFlags(), -1, -1);
 	local hLo = frac:GetHeight(10);
 	local hHi = frac:GetHeight(90);
+	local fLo = fracFen:GetHeight(8);
+	local fHi = fracFen:GetHeight(92);
 	local nSpike = 0;
 	local nWood = 0;
 	local nFen = 0;
-	local woodLand = {};
 	local y = 0;
 	while y < iH do
 		local x = 0;
@@ -4105,42 +4721,44 @@ function AddMireBands()
 					if hHi > hLo then
 						jitter = ((frac:GetHeight(x, y) - hLo) / (hHi - hLo) - 0.5) * 0.24;
 					end
-					local t = yNorm + jitter;
+					local fenJitter = 0;
+					if fHi > fLo then
+						fenJitter = ((fracFen:GetHeight(x, y) - fLo) / (fHi - fLo) - 0.5) * 0.38;
+					end
 					local band = 1;
-					if t < 0.34 then
-						band = 3;
-					elseif t < 0.67 then
-						band = 2;
+					if yNorm + jitter < 0.67 then
+						if yNorm + fenJitter < 0.32 then
+							band = 3;
+						else
+							band = 2;
+						end
 					end
 					mireBand[i] = band;
-					if band == 1 then
-						nSpike = nSpike + 1;
-						if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
-							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
-						end
-						plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
-					elseif band == 2 then
-						nWood = nWood + 1;
-						if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
-							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
-						end
-						if Map.Rand(100, "Mire Wood Plains") < 28 then
-							plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
-						else
-							plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
-						end
-						table.insert(woodLand, plot);
-					else
-						nFen = nFen + 1;
-						if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
-							plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
-						end
-						if plot:GetPlotType() == PlotTypes.PLOT_HILLS and Map.Rand(100, "Mire Fen Hill Keep") >= 12 then
-							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
-						end
-						plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
-					end
+					MireApplyBandTerrain(plot, band);
 				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	MireBleedFenWood(iW, iH, skip, mirrored);
+	local woodLand = {};
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local i = y * iW + x + 1;
+			local band = mireBand[i];
+			if band == 1 then
+				nSpike = nSpike + 1;
+			elseif band == 2 then
+				nWood = nWood + 1;
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false then
+					table.insert(woodLand, plot);
+				end
+			elseif band == 3 then
+				nFen = nFen + 1;
 			end
 			x = x + 1;
 		end
@@ -4369,7 +4987,9 @@ function AddMireFeatures()
 							end
 						elseif band == 2 then
 							if plot:GetPlotType() ~= PlotTypes.PLOT_OCEAN then
-								plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+								if Map.Rand(100, "Mire Wood Forest") < 92 then
+									plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+								end
 								if x >= minX and x <= maxX then
 									if x <= minX + 2 then
 										table.insert(woodWest, plot);
@@ -4579,7 +5199,7 @@ function AddWastelandWaterLayout()
 			dist[i] = INF;
 			if ((not mirrored) or (x <= iW * 0.5)) then
 				local plot = Map.GetPlot(x, y);
-				if plot ~= nil and plot:IsWater() then
+				if plot ~= nil and PlotIsWastelandWaterSource(plot) then
 					dist[i] = 0;
 					qn = qn + 1;
 					qx[qn] = x;
@@ -4634,14 +5254,20 @@ function AddWastelandWaterLayout()
 		y = y + 1;
 	end
 	local desertCut = maxDist - 3;
-	if desertCut < 3 then
-		desertCut = 3;
+	if desertCut < 5 then
+		desertCut = 5;
 	end
 	local rimFrac = Fractal.Create(iW, iH, 5, Map.GetFractalFlags(), -1, -1);
 	local rimH3 = rimFrac:GetHeight(95);
 	local rimH1 = rimFrac:GetHeight(80);
 	local nFertile = 0;
 	local nDesert = 0;
+	local nwFeat = {};
+	for row in GameInfo.Features() do
+		if row.NaturalWonder then
+			nwFeat[row.ID] = true;
+		end
+	end
 	y = 0;
 	while y < iH do
 		local x = 0;
@@ -4652,6 +5278,8 @@ function AddWastelandWaterLayout()
 				local plot = Map.GetPlot(x, y);
 				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN then
 					local d = dist[i];
+					local feat = plot:GetFeatureType();
+					if nwFeat[feat] ~= true then
 					local rh = rimFrac:GetHeight(x, y);
 					local rimW = 2;
 					if rh >= rimH3 then
@@ -4668,7 +5296,7 @@ function AddWastelandWaterLayout()
 							plot:SetTerrainType(TerrainTypes.TERRAIN_GRASS, false, false);
 						end
 						nFertile = nFertile + 1;
-					elseif maxDist >= 3 and d >= desertCut then
+					elseif maxDist >= 5 and d >= desertCut then
 						local nearSep = false;
 						local si = 1;
 						while si <= #tundraCols do
@@ -4691,13 +5319,301 @@ function AddWastelandWaterLayout()
 					else
 						plot:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
 					end
+					end
 				end
 			end
 			x = x + 1;
 		end
 		y = y + 1;
 	end
+	JagWastelandBigDeserts(iW, iH, skip, mirrored);
+	BufferWastelandDesertFromLush(iW, iH, skip, mirrored);
+	CullWastelandDesertSpeckles(iW, iH, skip, mirrored);
 	print("Wasteland water layout fertile:", nFertile, " desert:", nDesert, " maxDist:", maxDist);
+end
+------------------------------------------------------------------------------
+function BufferWastelandDesertFromLush(iW, iH, skip, mirrored)
+	local hit = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					local lush = false;
+					local d = 0;
+					while d < DirectionTypes.NUM_DIRECTION_TYPES do
+						local adj = PlotDirNoXWrap(x, y, d);
+						if adj ~= nil then
+							local t = adj:GetTerrainType();
+							if t == TerrainTypes.TERRAIN_GRASS or t == TerrainTypes.TERRAIN_PLAINS then
+								lush = true;
+								break
+							end
+						end
+						d = d + 1;
+					end
+					if lush then
+						table.insert(hit, plot);
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local i = 1;
+	while i <= #hit do
+		hit[i]:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+		i = i + 1;
+	end
+end
+------------------------------------------------------------------------------
+function CullWastelandDesertSpeckles(iW, iH, skip, mirrored)
+	local seen = {};
+	local y0 = 0;
+	while y0 < iH do
+		local x0 = 0;
+		while x0 < iW do
+			local i0 = y0 * iW + x0 + 1;
+			if seen[i0] ~= true and skip[x0] ~= true and ((not mirrored) or (x0 <= iW * 0.5)) then
+				local seed = Map.GetPlot(x0, y0);
+				if seed ~= nil and seed:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					local comp = {};
+					local qx = {x0};
+					local qy = {y0};
+					seen[i0] = true;
+					table.insert(comp, seed);
+					local qi = 1;
+					while qi <= #qx do
+						local cx = qx[qi];
+						local cy = qy[qi];
+						qi = qi + 1;
+						local ddir = 0;
+						while ddir < DirectionTypes.NUM_DIRECTION_TYPES do
+							local adj = PlotDirNoXWrap(cx, cy, ddir);
+							if adj ~= nil then
+								local ax = adj:GetX();
+								local ay = adj:GetY();
+								local ai = ay * iW + ax + 1;
+								if seen[ai] ~= true and skip[ax] ~= true and ((not mirrored) or (ax <= iW * 0.5)) then
+									if adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+										seen[ai] = true;
+										table.insert(comp, adj);
+										table.insert(qx, ax);
+										table.insert(qy, ay);
+									end
+								end
+							end
+							ddir = ddir + 1;
+						end
+					end
+					if #comp < 5 then
+						local ci = 1;
+						while ci <= #comp do
+							comp[ci]:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+							ci = ci + 1;
+						end
+					end
+				end
+			end
+			x0 = x0 + 1;
+		end
+		y0 = y0 + 1;
+	end
+end
+------------------------------------------------------------------------------
+function JagWastelandBigDeserts(iW, iH, skip, mirrored)
+	local seen = {};
+	local frac = Fractal.Create(iW, iH, 4, Map.GetFractalFlags(), -1, -1);
+	local edgeCut = frac:GetHeight(56);
+	local y0 = 0;
+	while y0 < iH do
+		local x0 = 0;
+		while x0 < iW do
+			local i0 = y0 * iW + x0 + 1;
+			if seen[i0] ~= true and skip[x0] ~= true and ((not mirrored) or (x0 <= iW * 0.5)) then
+				local seed = Map.GetPlot(x0, y0);
+				if seed ~= nil and seed:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+					local comp = {};
+					local qx = {x0};
+					local qy = {y0};
+					seen[i0] = true;
+					table.insert(comp, seed);
+					local qi = 1;
+					while qi <= #qx do
+						local cx = qx[qi];
+						local cy = qy[qi];
+						qi = qi + 1;
+						local ddir = 0;
+						while ddir < DirectionTypes.NUM_DIRECTION_TYPES do
+							local adj = PlotDirNoXWrap(cx, cy, ddir);
+							if adj ~= nil then
+								local ax = adj:GetX();
+								local ay = adj:GetY();
+								local ai = ay * iW + ax + 1;
+								if seen[ai] ~= true and skip[ax] ~= true and ((not mirrored) or (ax <= iW * 0.5)) then
+									if adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+										seen[ai] = true;
+										table.insert(comp, adj);
+										table.insert(qx, ax);
+										table.insert(qy, ay);
+									end
+								end
+							end
+							ddir = ddir + 1;
+						end
+					end
+					local n = #comp;
+					if n > 8 then
+						local target = 8 + math.floor((n - 8) * 0.30);
+						if target < 8 then
+							target = 8;
+						end
+						local pass = 0;
+						while #comp > target and pass < 24 do
+							pass = pass + 1;
+							local left = {};
+							local ci = 1;
+							while ci <= #comp do
+								local p = comp[ci];
+								if p:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+									local nDes = 0;
+									local d = 0;
+									while d < DirectionTypes.NUM_DIRECTION_TYPES do
+										local adj = PlotDirNoXWrap(p:GetX(), p:GetY(), d);
+										if adj ~= nil and adj:GetTerrainType() == TerrainTypes.TERRAIN_DESERT then
+											nDes = nDes + 1;
+										end
+										d = d + 1;
+									end
+									local hh = frac:GetHeight(p:GetX(), p:GetY());
+									local eat = false;
+									if nDes <= 4 and hh < edgeCut then
+										eat = true;
+									end
+									if eat then
+										p:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+									else
+										table.insert(left, p);
+									end
+								end
+								ci = ci + 1;
+							end
+							if #left >= #comp then
+								left = GetShuffledCopyOfTable(left);
+								local need = #left - target;
+								local k = 1;
+								while k <= need and k <= #left do
+									left[k]:SetTerrainType(TerrainTypes.TERRAIN_TUNDRA, false, false);
+									k = k + 1;
+								end
+								local kept = {};
+								k = need + 1;
+								while k <= #left do
+									table.insert(kept, left[k]);
+									k = k + 1;
+								end
+								comp = kept;
+							else
+								comp = left;
+							end
+						end
+					end
+				end
+			end
+			x0 = x0 + 1;
+		end
+		y0 = y0 + 1;
+	end
+end
+------------------------------------------------------------------------------
+local lakeVictoriaFeatureID = nil;
+local lakeVictoriaResolved = false;
+function GetLakeVictoriaFeatureID()
+	if lakeVictoriaResolved then
+		return lakeVictoriaFeatureID;
+	end
+	lakeVictoriaResolved = true;
+	local id = GameInfoTypes["FEATURE_LAKE_VICTORIA"];
+	if id ~= nil then
+		lakeVictoriaFeatureID = id;
+		return lakeVictoriaFeatureID;
+	end
+	for row in GameInfo.Features() do
+		if row.NaturalWonder then
+			local t = string.upper(tostring(row.Type));
+			if string.find(t, "VICTORIA", 1, true) then
+				lakeVictoriaFeatureID = row.ID;
+				return lakeVictoriaFeatureID;
+			end
+		end
+	end
+	return nil;
+end
+------------------------------------------------------------------------------
+function PlotIsWastelandWaterSource(plot)
+	if plot == nil then
+		return false
+	end
+	if plot:IsWater() then
+		return true
+	end
+	local vid = GetLakeVictoriaFeatureID();
+	if vid ~= nil and plot:GetFeatureType() == vid then
+		return true
+	end
+	return false;
+end
+------------------------------------------------------------------------------
+function FixWastelandFloodPlains()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local nStrip = 0;
+	local nAdd = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false then
+					local feat = plot:GetFeatureType();
+					local ter = plot:GetTerrainType();
+					if ter ~= TerrainTypes.TERRAIN_DESERT then
+						if feat == FeatureTypes.FEATURE_FLOOD_PLAINS or feat == FeatureTypes.FEATURE_OASIS then
+							plot:SetFeatureType(FeatureTypes.NO_FEATURE, -1);
+							nStrip = nStrip + 1;
+						end
+					elseif feat == FeatureTypes.NO_FEATURE and plot:CanHaveFeature(FeatureTypes.FEATURE_FLOOD_PLAINS) then
+						plot:SetFeatureType(FeatureTypes.FEATURE_FLOOD_PLAINS, -1);
+						nAdd = nAdd + 1;
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Wasteland floodplains strip:", nStrip, " add:", nAdd);
 end
 ------------------------------------------------------------------------------
 function PeakMassifClear(px, py, minD, iW, iH, skip, mirrored)
@@ -4777,6 +5693,26 @@ function PeakBlobTargetSize()
 	return 7 + Map.Rand(2, "Peaks Blob Big");
 end
 ------------------------------------------------------------------------------
+function PeakCountBlobNeighbors(plot, q)
+	local n = 0;
+	local d = 0;
+	while d < DirectionTypes.NUM_DIRECTION_TYPES do
+		local adj = PlotDirNoXWrap(plot:GetX(), plot:GetY(), d);
+		if adj ~= nil then
+			local qi = 1;
+			while qi <= #q do
+				if q[qi]:GetX() == adj:GetX() and q[qi]:GetY() == adj:GetY() then
+					n = n + 1;
+					break
+				end
+				qi = qi + 1;
+			end
+		end
+		d = d + 1;
+	end
+	return n;
+end
+------------------------------------------------------------------------------
 function PeakGrowFromSeed(seed, target, skip, mirrored, iW, frontBand)
 	local q = {};
 	table.insert(q, seed);
@@ -4787,22 +5723,39 @@ function PeakGrowFromSeed(seed, target, skip, mirrored, iW, frontBand)
 	while qi <= #q and grown < target do
 		local p = q[qi];
 		qi = qi + 1;
-		local d = 0;
-		while d < DirectionTypes.NUM_DIRECTION_TYPES do
+		local d0 = Map.Rand(DirectionTypes.NUM_DIRECTION_TYPES, "Peaks Blob Dir");
+		local k = 0;
+		while k < DirectionTypes.NUM_DIRECTION_TYPES and grown < target do
+			local d = d0 + k;
+			if d >= DirectionTypes.NUM_DIRECTION_TYPES then
+				d = d - DirectionTypes.NUM_DIRECTION_TYPES;
+			end
 			local adj = PlotDirNoXWrap(p:GetX(), p:GetY(), d);
-			if adj ~= nil and grown < target then
-				if PeakPlotUsable(adj, skip, mirrored, iW, frontBand) then
-					if PeakTouchesForeignMountain(adj, q) == false then
-						if Map.Rand(100, "Peaks Blob Grow") < 90 then
-							adj:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
-							adj:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
-							table.insert(q, adj);
+			if adj ~= nil then
+				local cand = adj;
+				if Map.Rand(100, "Peaks Blob Skip") < 26 then
+					local far = PlotDirNoXWrap(adj:GetX(), adj:GetY(), d);
+					if far ~= nil then
+						cand = far;
+					end
+				end
+				if PeakPlotUsable(cand, skip, mirrored, iW, frontBand) then
+					if PeakTouchesForeignMountain(cand, q) == false then
+						local packed = PeakCountBlobNeighbors(cand, q);
+						local allow = true;
+						if packed >= 3 and Map.Rand(100, "Peaks Blob Pack") >= 20 then
+							allow = false;
+						end
+						if allow and Map.Rand(100, "Peaks Blob Grow") < 76 then
+							cand:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
+							cand:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
+							table.insert(q, cand);
 							grown = grown + 1;
 						end
 					end
 				end
 			end
-			d = d + 1;
+			k = k + 1;
 		end
 	end
 	return q;
@@ -4950,10 +5903,112 @@ function PeakTryDoublePeak(q, skip, mirrored, iW, iH, frontBand)
 	return nil;
 end
 ------------------------------------------------------------------------------
+function PeakRollMassifKnobs()
+	nPeakMassifs = nPeakMassifs + 1;
+	local id = nPeakMassifs;
+	if Map.Rand(2, "Peaks Hill Style") == 0 then
+		peakHillStyle[id] = 1;
+		peakHillT1[id] = 0;
+		peakHillT2[id] = 22 + Map.Rand(18, "Peaks Thick T2");
+		peakHillT3[id] = 88 + Map.Rand(10, "Peaks Thick T3");
+	else
+		peakHillStyle[id] = 2;
+		peakHillT1[id] = 26 + Map.Rand(24, "Peaks Spike T1");
+		peakHillT2[id] = 40 + Map.Rand(20, "Peaks Spike T2");
+		peakHillT3[id] = 55 + Map.Rand(22, "Peaks Spike T3");
+	end
+	local fr = Map.Rand(100, "Peaks Forest Style");
+	if fr < 38 then
+		peakForestStyle[id] = 1;
+	elseif fr < 72 then
+		peakForestStyle[id] = 2;
+	else
+		peakForestStyle[id] = 3;
+	end
+	return id;
+end
+------------------------------------------------------------------------------
+function PeakRollFrontKnobs()
+	nPeakMassifs = nPeakMassifs + 1;
+	local id = nPeakMassifs;
+	peakHillStyle[id] = 2;
+	peakHillT1[id] = 50 + Map.Rand(20, "Peaks Front T1");
+	peakHillT2[id] = 70 + Map.Rand(15, "Peaks Front T2");
+	peakHillT3[id] = 88 + Map.Rand(10, "Peaks Front T3");
+	peakForestStyle[id] = 1;
+	return id;
+end
+------------------------------------------------------------------------------
+function PeakStampMassif(q, id)
+	local iW = Map.GetGridSize();
+	local i = 1;
+	while i <= #q do
+		local p = q[i];
+		peakMassif[p:GetY() * iW + p:GetX() + 1] = id;
+		i = i + 1;
+	end
+end
+------------------------------------------------------------------------------
+function PeakStampConnectedMountains(sx, sy, id, iW, iH, skip, mirrored)
+	local qx = {sx};
+	local qy = {sy};
+	peakMassif[sy * iW + sx + 1] = id;
+	local qi = 1;
+	while qi <= #qx do
+		local cx = qx[qi];
+		local cy = qy[qi];
+		qi = qi + 1;
+		local ddir = 0;
+		while ddir < DirectionTypes.NUM_DIRECTION_TYPES do
+			local adj = PlotDirNoXWrap(cx, cy, ddir);
+			if adj ~= nil then
+				local ax = adj:GetX();
+				local ay = adj:GetY();
+				local ai = ay * iW + ax + 1;
+				if skip[ax] ~= true and ((not mirrored) or (ax <= iW * 0.5)) then
+					if adj:GetPlotType() == PlotTypes.PLOT_MOUNTAIN and peakMassif[ai] == nil then
+						peakMassif[ai] = id;
+						qx[#qx + 1] = ax;
+						qy[#qy + 1] = ay;
+					end
+				end
+			end
+			ddir = ddir + 1;
+		end
+	end
+end
+------------------------------------------------------------------------------
+function PeakAssignUntaggedMassifs(iW, iH, skip, mirrored)
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local i = y * iW + x + 1;
+				if peakMassif[i] == nil then
+					local plot = Map.GetPlot(x, y);
+					if plot ~= nil and plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+						PeakStampConnectedMountains(x, y, PeakRollFrontKnobs(), iW, iH, skip, mirrored);
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+end
+------------------------------------------------------------------------------
 function AddPeaksLayout()
 	peakDist = {};
 	peakNX = {};
 	peakNY = {};
+	peakMassif = {};
+	peakHillStyle = {};
+	peakHillT1 = {};
+	peakHillT2 = {};
+	peakHillT3 = {};
+	peakForestStyle = {};
+	nPeakMassifs = 0;
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "peaks" then
 		return
@@ -4977,6 +6032,20 @@ function AddPeaksLayout()
 		frontBand[xEast] = true;
 		frontBand[xEast + 1] = true;
 	end
+	local noBlob = {};
+	local bx = 0;
+	while bx < iW do
+		if frontBand[bx] == true then
+			noBlob[bx] = true;
+		end
+		bx = bx + 1;
+	end
+	local sc = GetSnowWrapColumns(iW);
+	local sci = 1;
+	while sci <= #sc do
+		noBlob[sc[sci]] = true;
+		sci = sci + 1;
+	end
 	local mirrored = (DEF_MIRRORED == 1);
 	local land = {};
 	local y = 0;
@@ -4992,7 +6061,7 @@ function AddPeaksLayout()
 							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
 						end
 					end
-					if keepFront == false and frontBand[x] ~= true and y >= 2 and y < iH - 2 then
+					if keepFront == false and noBlob[x] ~= true and y >= 2 and y < iH - 2 then
 						table.insert(land, plot);
 					end
 				end
@@ -5021,17 +6090,19 @@ function AddPeaksLayout()
 				local px = seed:GetX();
 				local py = seed:GetY();
 				if PeakMassifClear(px, py, minClear, iW, iH, skip, mirrored) then
-					local q = PeakGrowFromSeed(seed, PeakBlobTargetSize(), skip, mirrored, iW, frontBand);
+					local q = PeakGrowFromSeed(seed, PeakBlobTargetSize(), skip, mirrored, iW, noBlob);
 					blobN = blobN + #q;
 					nPlaced = nPlaced + 1;
+					PeakStampMassif(q, PeakRollMassifKnobs());
 					local didDouble = false;
 					if nDouble < 1 and nPlaced == 1 and Map.Rand(100, "Peaks Double") < 18 then
-						local q2 = PeakTryDoublePeak(q, skip, mirrored, iW, iH, frontBand);
+						local q2 = PeakTryDoublePeak(q, skip, mirrored, iW, iH, noBlob);
 						if q2 ~= nil then
 							blobN = blobN + #q2;
 							nPlaced = nPlaced + 1;
 							nDouble = nDouble + 1;
 							didDouble = true;
+							PeakStampMassif(q2, PeakRollMassifKnobs());
 						end
 					end
 					if didDouble == false and #q >= 8 then
@@ -5056,10 +6127,12 @@ function AddPeaksLayout()
 		end
 		pass = pass + 1;
 	end
+	PeakAssignUntaggedMassifs(iW, iH, skip, mirrored);
 	local INF = 99;
 	local dist = {};
 	local nx = {};
 	local ny = {};
+	local mz = {};
 	local qx = {};
 	local qy = {};
 	local qn = 0;
@@ -5075,6 +6148,7 @@ function AddPeaksLayout()
 					dist[i] = 0;
 					nx[i] = x;
 					ny[i] = y;
+					mz[i] = peakMassif[i];
 					qn = qn + 1;
 					qx[qn] = x;
 					qy[qn] = y;
@@ -5103,6 +6177,7 @@ function AddPeaksLayout()
 						dist[ai] = cd + 1;
 						nx[ai] = nx[ci];
 						ny[ai] = ny[ci];
+						mz[ai] = mz[ci];
 						qn = qn + 1;
 						qx[qn] = ax;
 						qy[qn] = ay;
@@ -5113,8 +6188,6 @@ function AddPeaksLayout()
 		end
 	end
 	local hillFrac = Fractal.Create(iW, iH, 5, Map.GetFractalFlags(), -1, -1);
-	local hill2 = hillFrac:GetHeight(58);
-	local hill3 = hillFrac:GetHeight(84);
 	local nHill = 0;
 	y = 0;
 	while y < iH do
@@ -5124,6 +6197,9 @@ function AddPeaksLayout()
 			peakDist[i] = dist[i];
 			peakNX[i] = nx[i];
 			peakNY[i] = ny[i];
+			if mz[i] ~= nil then
+				peakMassif[i] = mz[i];
+			end
 			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
 				local plot = Map.GetPlot(x, y);
 				if plot ~= nil and plot:IsWater() == false then
@@ -5131,27 +6207,48 @@ function AddPeaksLayout()
 						plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
 					else
 						local d = dist[i];
-						local rim = 1;
-						local hh = hillFrac:GetHeight(x, y);
-						if hh >= hill2 then
-							rim = 2;
+						local makeHill = false;
+						if d < INF then
+							local id = mz[i];
+							local st = 1;
+							local p1 = 0;
+							local p2 = 32;
+							local p3 = 92;
+							if id ~= nil and peakHillStyle[id] ~= nil then
+								st = peakHillStyle[id];
+								p1 = peakHillT1[id];
+								p2 = peakHillT2[id];
+								p3 = peakHillT3[id];
+							end
+							local hh = hillFrac:GetHeight(x, y);
+							if st == 1 then
+								if d == 1 then
+									makeHill = true;
+								elseif d == 2 and hh >= hillFrac:GetHeight(p2) then
+									makeHill = true;
+								elseif d == 3 and hh >= hillFrac:GetHeight(p3) then
+									makeHill = true;
+								end
+							else
+								if d == 1 and hh >= hillFrac:GetHeight(p1) then
+									makeHill = true;
+								elseif d == 2 and hh >= hillFrac:GetHeight(p2) then
+									makeHill = true;
+								elseif d == 3 and hh >= hillFrac:GetHeight(p3) then
+									makeHill = true;
+								end
+							end
 						end
-						if hh >= hill3 then
-							rim = 3;
+						if makeHill == false and d >= 6 and d < INF and Map.Rand(100, "Peaks Far Hill") < 8 then
+							makeHill = true;
 						end
-						if d <= rim and d < INF then
+						if makeHill then
 							plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
 							plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
 							nHill = nHill + 1;
 						else
-							if d >= 6 and d < INF and Map.Rand(100, "Peaks Far Hill") < 8 then
-								plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
-								plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
-								nHill = nHill + 1;
-							else
-								plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
-								plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
-							end
+							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+							plot:SetTerrainType(TerrainTypes.TERRAIN_PLAINS, false, false);
 						end
 					end
 				end
@@ -5160,7 +6257,86 @@ function AddPeaksLayout()
 		end
 		y = y + 1;
 	end
-	print("Peaks blobs mountains:", blobN, " hill collar:", nHill, " massifs:", nPlaced, " rolled:", nBlobs, " doubles:", nDouble);
+	print("Peaks blobs mountains:", blobN, " hill collar:", nHill, " massifs:", nPlaced, " rolled:", nBlobs, " doubles:", nDouble, " styles:", nPeakMassifs);
+	PeakFlattenFrontTundraHills();
+	PeakScatterFrontRelief();
+end
+------------------------------------------------------------------------------
+function PeakTouchesMountain(plot)
+	local d = 0;
+	while d < DirectionTypes.NUM_DIRECTION_TYPES do
+		local adj = PlotDirNoXWrap(plot:GetX(), plot:GetY(), d);
+		if adj ~= nil and adj:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+			return true
+		end
+		d = d + 1;
+	end
+	return false;
+end
+------------------------------------------------------------------------------
+function PeakFlattenFrontTundraHills()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "peaks" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local cols = GetSnowWrapTundraColumns(iW);
+	local n = 0;
+	local ci = 1;
+	while ci <= #cols do
+		local x = cols[ci];
+		if x >= 0 and x < iW and ((DEF_MIRRORED ~= 1) or (x <= iW * 0.5)) then
+			local y = 0;
+			while y < iH do
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() == PlotTypes.PLOT_HILLS then
+					if PeakTouchesMountain(plot) == false then
+						if Map.Rand(100, "Peaks Tundra Flatten") < 85 then
+							plot:SetPlotType(PlotTypes.PLOT_LAND, false, false);
+							n = n + 1;
+						end
+					end
+				end
+				y = y + 1;
+			end
+		end
+		ci = ci + 1;
+	end
+	print("Peaks front tundra flatten:", n);
+end
+------------------------------------------------------------------------------
+function PeakScatterFrontRelief()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "peaks" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local cols = GetSnowWrapTundraColumns(iW);
+	local nHill = 0;
+	local nMtn = 0;
+	local ci = 1;
+	while ci <= #cols do
+		local x = cols[ci];
+		if x >= 0 and x < iW and ((DEF_MIRRORED ~= 1) or (x <= iW * 0.5)) then
+			local y = 0;
+			while y < iH do
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() == PlotTypes.PLOT_LAND then
+					local pt = Map.Rand(100, "Peaks Tundra Scatter");
+					if pt < 3 then
+						plot:SetPlotType(PlotTypes.PLOT_MOUNTAIN, false, false);
+						nMtn = nMtn + 1;
+					elseif pt < 17 then
+						plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+						nHill = nHill + 1;
+					end
+				end
+				y = y + 1;
+			end
+		end
+		ci = ci + 1;
+	end
+	print("Peaks front tundra scatter hills:", nHill, " peaks:", nMtn);
 end
 ------------------------------------------------------------------------------
 function PeakAdjGrass(plot)
@@ -5263,6 +6439,246 @@ function PeakGrowMeadow(seed, target, skip, mirrored, iW)
 		end
 	end
 	return grown;
+end
+------------------------------------------------------------------------------
+function PeakForestCollarEligible(plot, skip, mirrored, iW, massifId)
+	if plot == nil then
+		return false
+	end
+	local ax = plot:GetX();
+	local ay = plot:GetY();
+	if skip[ax] == true then
+		return false
+	end
+	if mirrored and ax > iW * 0.5 then
+		return false
+	end
+	if plot:IsWater() then
+		return false
+	end
+	if plot:GetPlotType() == PlotTypes.PLOT_MOUNTAIN then
+		return false
+	end
+	if plot:GetFeatureType() ~= FeatureTypes.NO_FEATURE then
+		return false
+	end
+	local di = ay * iW + ax + 1;
+	if peakMassif[di] ~= massifId then
+		return false
+	end
+	local d = peakDist[di];
+	if d == nil or d < 1 or d > 3 then
+		return false
+	end
+	return true;
+end
+------------------------------------------------------------------------------
+function PeakGrowForest(seed, target, skip, mirrored, iW, massifId)
+	local q = {};
+	table.insert(q, seed);
+	seed:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+	local grown = 1;
+	local qi = 1;
+	while qi <= #q and grown < target do
+		local p = q[qi];
+		qi = qi + 1;
+		local d = 0;
+		while d < DirectionTypes.NUM_DIRECTION_TYPES do
+			local adj = PlotDirNoXWrap(p:GetX(), p:GetY(), d);
+			if adj ~= nil and grown < target then
+				if PeakForestCollarEligible(adj, skip, mirrored, iW, massifId) then
+					if Map.Rand(100, "Peaks Forest Blob Grow") < 70 then
+						adj:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+						table.insert(q, adj);
+						grown = grown + 1;
+					end
+				end
+			end
+			d = d + 1;
+		end
+	end
+	return grown;
+end
+------------------------------------------------------------------------------
+function AddPeaksMassifForests()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "peaks" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = FillMireSkip(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local nBlob = 0;
+	local nTiles = 0;
+	local id = 1;
+	while id <= nPeakMassifs do
+		if peakForestStyle[id] == 3 then
+			local seeds = {};
+			local y = 0;
+			while y < iH do
+				local x = 0;
+				while x < iW do
+					local plot = Map.GetPlot(x, y);
+					if PeakForestCollarEligible(plot, skip, mirrored, iW, id) then
+						table.insert(seeds, plot);
+					end
+					x = x + 1;
+				end
+				y = y + 1;
+			end
+			if #seeds > 0 then
+				seeds = GetShuffledCopyOfTable(seeds);
+				local nWant = 1;
+				if Map.Rand(100, "Peaks Forest Blob Extra") < 22 then
+					nWant = 2;
+				end
+				local b = 0;
+				local si = 1;
+				while b < nWant and si <= #seeds do
+					local seed = seeds[si];
+					si = si + 1;
+					if seed:GetFeatureType() == FeatureTypes.NO_FEATURE then
+						local sz = 7 + Map.Rand(5, "Peaks Forest Blob Size");
+						if b > 0 then
+							sz = 5 + Map.Rand(3, "Peaks Forest Blob Small");
+						end
+						nTiles = nTiles + PeakGrowForest(seed, sz, skip, mirrored, iW, id);
+						nBlob = nBlob + 1;
+						b = b + 1;
+					end
+				end
+			end
+		end
+		id = id + 1;
+	end
+	print("Peaks forest blobs:", nBlob, " tiles:", nTiles);
+end
+------------------------------------------------------------------------------
+function AddPeaksBackCoastForest()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "peaks" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = FillMireSkip(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local wrapN = ResolveSnowWrapWidths();
+	local wrapHalf = wrapN / 2;
+	local mid = math.floor(iW / 2);
+	local backMax = math.floor(mid * 0.42);
+	if wrapHalf > 0 then
+		if backMax < wrapHalf + 8 then
+			backMax = wrapHalf + 8;
+		end
+	elseif backMax < 8 then
+		backMax = 8;
+	end
+	local INF = 99;
+	local wdist = {};
+	local qx = {};
+	local qy = {};
+	local qn = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local i = y * iW + x + 1;
+			wdist[i] = INF;
+			if x <= backMax and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil and plot:IsWater() then
+					wdist[i] = 0;
+					qn = qn + 1;
+					qx[qn] = x;
+					qy[qn] = y;
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local qi = 1;
+	while qi <= qn do
+		local cx = qx[qi];
+		local cy = qy[qi];
+		local cd = wdist[cy * iW + cx + 1];
+		qi = qi + 1;
+		if cd < 2 then
+			local ddir = 0;
+			while ddir < DirectionTypes.NUM_DIRECTION_TYPES do
+				local adj = PlotDirNoXWrap(cx, cy, ddir);
+				if adj ~= nil then
+					local ax = adj:GetX();
+					local ay = adj:GetY();
+					if ax <= backMax and skip[ax] ~= true and ((not mirrored) or (ax <= iW * 0.5)) then
+						local ai = ay * iW + ax + 1;
+						if wdist[ai] > cd + 1 then
+							wdist[ai] = cd + 1;
+							qn = qn + 1;
+							qx[qn] = ax;
+							qy[qn] = ay;
+						end
+					end
+				end
+				ddir = ddir + 1;
+			end
+		end
+	end
+	local eligible = {};
+	y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			local i = y * iW + x + 1;
+			local wd = wdist[i];
+			if wd ~= nil and wd >= 1 and wd <= 2 and skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local dPeak = peakDist[i];
+				if dPeak ~= nil and dPeak >= 5 then
+					local plot = Map.GetPlot(x, y);
+					if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() == PlotTypes.PLOT_LAND then
+						if plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+							table.insert(eligible, plot);
+						end
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	if #eligible < 1 then
+		print("Peaks back-coast forest: 0");
+		return
+	end
+	eligible = GetShuffledCopyOfTable(eligible);
+	local n = 0;
+	local ei = 1;
+	while ei <= #eligible do
+		local plot = eligible[ei];
+		if plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+			if Map.Rand(100, "Peaks Back Coast Seed") < 28 then
+				plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+				n = n + 1;
+			end
+		end
+		ei = ei + 1;
+	end
+	local growPass = 0;
+	while growPass < 2 do
+		ei = 1;
+		while ei <= #eligible do
+			local plot = eligible[ei];
+			if plot:GetFeatureType() == FeatureTypes.NO_FEATURE and PeakAdjForest(plot) then
+				if Map.Rand(100, "Peaks Back Coast Grow") < 62 then
+					plot:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+					n = n + 1;
+				end
+			end
+			ei = ei + 1;
+		end
+		growPass = growPass + 1;
+	end
+	print("Peaks back-coast forest:", n, "/", #eligible);
 end
 ------------------------------------------------------------------------------
 function AddPeaksMeadows()
@@ -5398,6 +6814,205 @@ function IsNearAnyStart(x, y, starts, dist)
 	return false
 end
 ------------------------------------------------------------------------------
+function AddWastelandTundraForests()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local plots = {};
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() == PlotTypes.PLOT_LAND
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+					table.insert(plots, plot);
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local placed, n = PlaceClusteredFeature(plots, FeatureTypes.FEATURE_FOREST, 8, "Wasteland Tundra Forest");
+	print("Wasteland tundra forests:", placed, "/", n);
+end
+------------------------------------------------------------------------------
+function WastelandMiningLuxFlatTundraToHill()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local mineLux = {};
+	local nIds = 0;
+	if GameInfo.Improvement_ResourceTypes ~= nil then
+		for row in GameInfo.Improvement_ResourceTypes() do
+			if row.ImprovementType == "IMPROVEMENT_MINE" then
+				local resInfo = GameInfo.Resources[row.ResourceType];
+				if resInfo ~= nil and resInfo.ResourceClassType == "RESOURCECLASS_LUXURY" then
+					mineLux[resInfo.ID] = true;
+					nIds = nIds + 1;
+				end
+			end
+		end
+	end
+	if nIds < 1 then
+		local names = {
+			"RESOURCE_GOLD", "RESOURCE_SILVER", "RESOURCE_GEMS", "RESOURCE_COPPER",
+			"RESOURCE_JADE", "RESOURCE_LAPIS", "RESOURCE_AMBER", "RESOURCE_OBSIDIAN"
+		};
+		local i = 1;
+		while names[i] ~= nil do
+			local id = GameInfoTypes[names[i]];
+			if id ~= nil then
+				mineLux[id] = true;
+			end
+			i = i + 1;
+		end
+	end
+	local iW, iH = Map.GetGridSize();
+	local mirrored = (DEF_MIRRORED == 1);
+	local raised = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if (not mirrored) or (x <= iW * 0.5) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:GetPlotType() == PlotTypes.PLOT_LAND
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+					and mineLux[plot:GetResourceType(-1)] == true then
+					if Map.Rand(100, "Wasteland mine lux hill") < 90 then
+						plot:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+						raised = raised + 1;
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Wasteland mining lux flat tundra to hill:", raised);
+end
+------------------------------------------------------------------------------
+function WastelandTundraStartHillForest(asp)
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	if asp == nil or asp.startingPlots == nil then
+		return
+	end
+	local ironID = GameInfoTypes["RESOURCE_IRON"];
+	local deerID = GameInfoTypes["RESOURCE_DEER"];
+	local woodID = GameInfoTypes["RESOURCE_HARDWOOD"];
+	local iW, iH = Map.GetGridSize();
+	local r = 1;
+	while asp.startingPlots[r] ~= nil do
+		local sp = asp.startingPlots[r];
+		local sx = sp[1];
+		local sy = sp[2];
+		if not (DEF_MIRRORED == 1 and sx > iW * 0.5) then
+			local nTundra = 0;
+			local nLush = 0;
+			local hillForest = 0;
+			local ironHills = {};
+			local deerFlats = {};
+			local blankHills = {};
+			local blankFlats = {};
+			local y = 0;
+			while y < iH do
+				local x = 0;
+				while x < iW do
+					local d = Map.PlotDistance(sx, sy, x, y);
+					if d >= 1 and d <= 2 then
+						local plot = Map.GetPlot(x, y);
+						if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN then
+							local ter = plot:GetTerrainType();
+							if ter == TerrainTypes.TERRAIN_GRASS or ter == TerrainTypes.TERRAIN_PLAINS then
+								nLush = nLush + 1;
+							elseif ter == TerrainTypes.TERRAIN_TUNDRA then
+								nTundra = nTundra + 1;
+							end
+							local isHill = (plot:GetPlotType() == PlotTypes.PLOT_HILLS);
+							local isForest = (plot:GetFeatureType() == FeatureTypes.FEATURE_FOREST);
+							if isHill and isForest then
+								hillForest = hillForest + 1;
+							end
+							local res = plot:GetResourceType(-1);
+							if isHill and ironID ~= nil and res == ironID and plot:GetNumResource() >= 4 and isForest == false then
+								table.insert(ironHills, plot);
+							end
+							if isHill == false and isForest and deerID ~= nil and res == deerID then
+								table.insert(deerFlats, plot);
+							end
+							if isHill and res == -1 and plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
+								table.insert(blankHills, plot);
+							end
+							if isHill == false and plot:GetPlotType() == PlotTypes.PLOT_LAND and res == -1 and plot:GetFeatureType() == FeatureTypes.NO_FEATURE and ter == TerrainTypes.TERRAIN_TUNDRA then
+								table.insert(blankFlats, plot);
+							end
+						end
+					end
+					x = x + 1;
+				end
+				y = y + 1;
+			end
+			if nTundra >= nLush then
+				if #ironHills > 0 and Map.Rand(100, "Wasteland Start Iron Forest") < 55 then
+					ironHills = GetShuffledCopyOfTable(ironHills);
+					ironHills[1]:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+					hillForest = hillForest + 1;
+				end
+				if hillForest < 1 and #deerFlats > 0 and Map.Rand(100, "Wasteland Start Deer Hill") < 40 then
+					deerFlats = GetShuffledCopyOfTable(deerFlats);
+					deerFlats[1]:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+					hillForest = hillForest + 1;
+				end
+				if hillForest < 1 and Map.Rand(100, "Wasteland Start Hardwood") < 18 then
+					local target = nil;
+					if #blankHills > 0 then
+						blankHills = GetShuffledCopyOfTable(blankHills);
+						target = blankHills[1];
+					elseif #blankFlats > 0 then
+						blankFlats = GetShuffledCopyOfTable(blankFlats);
+						target = blankFlats[1];
+						target:SetPlotType(PlotTypes.PLOT_HILLS, false, false);
+					end
+					if target ~= nil then
+						target:SetFeatureType(FeatureTypes.FEATURE_FOREST, -1);
+						if woodID ~= nil then
+							target:SetResourceType(woodID, 1);
+						end
+						hillForest = hillForest + 1;
+					end
+				end
+			end
+		end
+		r = r + 1;
+	end
+end
+------------------------------------------------------------------------------
 function AddWastelandFallout()
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "wasteland" then
@@ -5449,8 +7064,8 @@ function AddWastelandFallout()
 				if plot ~= nil
 					and plot:IsWater() == false
 					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
-					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
-					and plot:GetResourceType(-1) == -1 then
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+					and plot:GetFeatureType() == FeatureTypes.NO_FEATURE then
 					if barrierCol[x] == true then
 						table.insert(barrierPlots, plot);
 					elseif skip[x] ~= true and IsNearAnyStart(x, y, starts, 3) == false then
@@ -5547,6 +7162,8 @@ function StripBarrierResources()
 	local oilID = GameInfoTypes["RESOURCE_OIL"];
 	local alumID = GameInfoTypes["RESOURCE_ALUMINUM"];
 	local uranID = GameInfoTypes["RESOURCE_URANIUM"];
+	local horseID = GameInfoTypes["RESOURCE_HORSE"];
+	local ironID = GameInfoTypes["RESOURCE_IRON"];
 	local iW, iH = Map.GetGridSize();
 	local cols = GetSnowWrapColumns(iW);
 	local n = 0;
@@ -5567,6 +7184,9 @@ function StripBarrierResources()
 							if info.ResourceClassType == "RESOURCECLASS_BONUS" or info.ResourceClassType == "RESOURCECLASS_LUXURY" then
 								strip = true;
 							end
+						end
+						if res == horseID or res == ironID then
+							strip = true;
 						end
 					elseif res == oilID or res == alumID or res == uranID then
 						strip = false;
@@ -5660,7 +7280,7 @@ end
 ------------------------------------------------------------------------------
 function PlaceDesertTundraFrontResources()
 	local cfg = GetBarrierConfig();
-	if cfg == nil then
+	if cfg == nil or cfg.kind == "peaks" then
 		return
 	end
 	local iW, iH = Map.GetGridSize();
@@ -5884,16 +7504,105 @@ function PlaceMurkTundraSheepStone()
 	print("Murk tundra extras sheep:", sheepN, " stone:", stoneN, " horse:", horseN);
 end
 ------------------------------------------------------------------------------
-function PlacePeaksResources()
+function PlaceMurkWheatAndMarshStone()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wetland" then
+		return
+	end
+	local wheatID = GameInfoTypes["RESOURCE_WHEAT"];
+	local stoneID = GameInfoTypes["RESOURCE_STONE"];
+	local iW, iH = Map.GetGridSize();
+	local skip = FillMireSkip(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local nWheat = 0;
+	local nStone = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
+					and plot:GetResourceType(-1) == -1 then
+					if stoneID ~= nil and plot:GetFeatureType() == FeatureTypes.FEATURE_MARSH then
+						if Map.Rand(100, "Murk Marsh Stone") < 6 then
+							plot:SetResourceType(stoneID, 1);
+							nStone = nStone + 1;
+						end
+					elseif wheatID ~= nil
+						and plot:GetPlotType() == PlotTypes.PLOT_LAND
+						and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+						and plot:IsRiver()
+						and plot:GetFeatureType() ~= FeatureTypes.FEATURE_MARSH then
+						if Map.Rand(100, "Murk Tundra Wheat") < 8 then
+							plot:SetResourceType(wheatID, 1);
+							nWheat = nWheat + 1;
+						end
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Murk tundra wheat:", nWheat, " marsh stone:", nStone);
+end
+------------------------------------------------------------------------------
+function PlaceMurkSnowStoneIron()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wetland" then
+		return
+	end
+	local stoneID = GameInfoTypes["RESOURCE_STONE"];
+	local ironID = GameInfoTypes["RESOURCE_IRON"];
+	if stoneID == nil and ironID == nil then
+		return
+	end
+	local iW, iH = Map.GetGridSize();
+	local skip = FillMireSkip(iW);
+	local mirrored = (DEF_MIRRORED == 1);
+	local nStone = 0;
+	local nIron = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_SNOW
+					and plot:GetResourceType(-1) == -1 then
+					local pt = Map.Rand(100, "Murk Snow Res");
+					if stoneID ~= nil and pt < 5 then
+						plot:SetResourceType(stoneID, 1);
+						nStone = nStone + 1;
+					elseif ironID ~= nil and pt < 9 then
+						plot:SetResourceType(ironID, 2);
+						nIron = nIron + 1;
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	print("Murk snow stone:", nStone, " iron:", nIron);
+end
+------------------------------------------------------------------------------
+function PlacePeaksPlainsCattle()
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "peaks" then
 		return
 	end
-	local deerID = GameInfoTypes["RESOURCE_DEER"];
-	local bisonID = GameInfoTypes["RESOURCE_BISON"];
 	local cowID = GameInfoTypes["RESOURCE_COW"];
 	local horseID = GameInfoTypes["RESOURCE_HORSE"];
-	local ironID = GameInfoTypes["RESOURCE_IRON"];
+	if cowID == nil then
+		return
+	end
 	local iW, iH = Map.GetGridSize();
 	local skip = FillMireSkip(iW);
 	local snowCols = GetSnowWrapColumns(iW);
@@ -5903,39 +7612,95 @@ function PlacePeaksResources()
 		sci = sci + 1;
 	end
 	local mirrored = (DEF_MIRRORED == 1);
-	local deerPlots = {};
-	local bisonPlots = {};
-	local cowPlots = {};
-	local horsePlots = {};
-	local ironPlots = {};
+	local nHorse = 0;
+	local plains = {};
 	local y = 0;
 	while y < iH do
 		local x = 0;
 		while x < iW do
 			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
 				local plot = Map.GetPlot(x, y);
-				if plot ~= nil and plot:IsWater() == false and plot:GetPlotType() ~= PlotTypes.PLOT_MOUNTAIN and plot:GetResourceType(-1) == -1 then
-					local di = y * iW + x + 1;
-					local dPeak = peakDist[di];
-					if deerID ~= nil and plot:GetFeatureType() == FeatureTypes.FEATURE_FOREST and dPeak ~= nil and dPeak >= 1 and dPeak <= 3 then
-						if plot:CanHaveResource(deerID) then
-							table.insert(deerPlots, plot);
+				if plot ~= nil and plot:IsWater() == false then
+					if horseID ~= nil and plot:GetResourceType(-1) == horseID then
+						nHorse = nHorse + 1;
+					end
+					if plot:GetPlotType() == PlotTypes.PLOT_LAND
+						and plot:GetTerrainType() == TerrainTypes.TERRAIN_PLAINS
+						and plot:GetFeatureType() == FeatureTypes.NO_FEATURE
+						and plot:GetResourceType(-1) == -1 then
+						table.insert(plains, plot);
+					end
+				end
+			end
+			x = x + 1;
+		end
+		y = y + 1;
+	end
+	local nWant = math.floor(nHorse * 0.15 / 0.85 + 0.5);
+	if nWant < 1 or #plains < 1 then
+		print("Peaks plains cattle:", 0, " horses:", nHorse);
+		return
+	end
+	plains = GetShuffledCopyOfTable(plains);
+	local n = 0;
+	local i = 1;
+	while n < nWant and i <= #plains do
+		if plains[i]:GetResourceType(-1) == -1 then
+			plains[i]:SetResourceType(cowID, 1);
+			n = n + 1;
+		end
+		i = i + 1;
+	end
+	print("Peaks plains cattle:", n, "/", nWant, " horses:", nHorse);
+end
+------------------------------------------------------------------------------
+function PlaceWastelandTundraWheatSheep()
+	local cfg = GetBarrierConfig();
+	if cfg == nil or cfg.kind ~= "wasteland" then
+		return
+	end
+	local wheatID = GameInfoTypes["RESOURCE_WHEAT"];
+	local sheepID = GameInfoTypes["RESOURCE_SHEEP"];
+	local iW, iH = Map.GetGridSize();
+	local skip = {};
+	local cols = GetSnowWrapColumns(iW);
+	local ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	cols = GetSnowWrapTundraColumns(iW);
+	ci = 1;
+	while ci <= #cols do
+		skip[cols[ci]] = true;
+		ci = ci + 1;
+	end
+	local mirrored = (DEF_MIRRORED == 1);
+	local nWheat = 0;
+	local nSheep = 0;
+	local y = 0;
+	while y < iH do
+		local x = 0;
+		while x < iW do
+			if skip[x] ~= true and ((not mirrored) or (x <= iW * 0.5)) then
+				local plot = Map.GetPlot(x, y);
+				if plot ~= nil
+					and plot:IsWater() == false
+					and plot:GetPlotType() == PlotTypes.PLOT_LAND
+					and plot:GetTerrainType() == TerrainTypes.TERRAIN_TUNDRA
+					and plot:GetResourceType(-1) == -1 then
+					local placed = false;
+					if wheatID ~= nil and plot:IsRiver() then
+						if Map.Rand(100, "Wasteland Tundra Wheat") < 10 then
+							plot:SetResourceType(wheatID, 1);
+							nWheat = nWheat + 1;
+							placed = true;
 						end
 					end
-					if plot:GetPlotType() == PlotTypes.PLOT_LAND then
-						if bisonID ~= nil and plot:GetTerrainType() == TerrainTypes.TERRAIN_PLAINS and plot:CanHaveResource(bisonID) then
-							table.insert(bisonPlots, plot);
-						end
-						if cowID ~= nil and plot:GetTerrainType() == TerrainTypes.TERRAIN_GRASS and plot:CanHaveResource(cowID) then
-							table.insert(cowPlots, plot);
-						end
-						if horseID ~= nil and plot:CanHaveResource(horseID) then
-							table.insert(horsePlots, plot);
-						end
-					end
-					if ironID ~= nil and plot:GetPlotType() == PlotTypes.PLOT_HILLS and dPeak ~= nil and dPeak >= 1 and dPeak <= 3 then
-						if plot:CanHaveResource(ironID) then
-							table.insert(ironPlots, plot);
+					if placed == false and sheepID ~= nil then
+						if Map.Rand(100, "Wasteland Tundra Sheep") < 4 then
+							plot:SetResourceType(sheepID, 1);
+							nSheep = nSheep + 1;
 						end
 					end
 				end
@@ -5944,28 +7709,7 @@ function PlacePeaksResources()
 		end
 		y = y + 1;
 	end
-	local function dump(plots, resID, nWant, amt)
-		if resID == nil or nWant < 1 then
-			return 0
-		end
-		plots = GetShuffledCopyOfTable(plots);
-		local n = 0;
-		local i = 1;
-		while n < nWant and i <= #plots do
-			if plots[i]:GetResourceType(-1) == -1 then
-				plots[i]:SetResourceType(resID, amt);
-				n = n + 1;
-			end
-			i = i + 1;
-		end
-		return n;
-	end
-	local nDeer = dump(deerPlots, deerID, 3 + Map.Rand(3, "Peaks Extra Deer"), 1);
-	local nBison = dump(bisonPlots, bisonID, 2 + Map.Rand(2, "Peaks Extra Bison"), 1);
-	local nCow = dump(cowPlots, cowID, 3 + Map.Rand(2, "Peaks Extra Cow"), 1);
-	local nHorse = dump(horsePlots, horseID, 2, 2);
-	local nIron = dump(ironPlots, ironID, 2, 2);
-	print("Peaks extras deer:", nDeer, " bison:", nBison, " cow:", nCow, " horse:", nHorse, " iron:", nIron);
+	print("Wasteland tundra wheat:", nWheat, " sheep:", nSheep);
 end
 ------------------------------------------------------------------------------
 function PlaceDesertMainlandResourceBoost()
@@ -6108,14 +7852,23 @@ function StartPlotSystem()
 
 	start_plot_database:PlaceNaturalWonders(wonderargs)
 
+	AddWastelandWaterLayout();
+	FixWastelandFloodPlains();
+	AddWastelandTundraForests();
 	start_plot_database:PlaceResourcesAndCityStates();
+	MaybePlaceStartTileResource(start_plot_database);
 
 	PlaceDesertTundraFrontResources();
 	PlaceDesertMainlandResourceBoost();
 	PlaceMurkTundraSheepStone();
-	PlacePeaksResources();
+	PlaceMurkWheatAndMarshStone();
+	PlaceMurkSnowStoneIron();
+	PlacePeaksPlainsCattle();
+	PlaceWastelandTundraWheatSheep();
 	StripBarrierResources();
+	WastelandMiningLuxFlatTundraToHill();
 	start_plot_database:AddForestToResource();
+	WastelandTundraStartHillForest(start_plot_database);
 	AddSnowForests();
 	AddBarrierOases();
 	AddWastelandFallout();
@@ -6133,8 +7886,10 @@ function StartPlotSystem()
 			end
 		end
 	end
+	CullShortRivers();
 	PurgeNearStartLakeFish();
 	CapSeaResources();
+	ForceWastelandCoastalLuxuries(start_plot_database);
 	if DEF_MIRRORED == 1 then
 	------------------------------------------------------------------------------
 	----------------------- INCLUDE getMirroredPlot()-----------------------------
