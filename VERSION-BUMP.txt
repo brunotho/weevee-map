@@ -1,0 +1,48 @@
+Weevee version bump
+===================
+
+When the user says to bump the version, follow this file. Do every step
+in the same bump. Skipping any one causes mismatched copies in play.
+
+GitHub zip folder name = GitHub repo name. The agent CAN rename the
+repo from here with `gh repo rename` (old URL redirects). The user must
+rename the local Steam folder in Explorer afterward — do not move the
+Cursor workspace folder from under the editor.
+
+Current version: 11.0.2
+Next version:    11.0.3   (set this as current after a successful bump)
+
+Names for version X.Y.Z
+-----------------------
+In-game title:  Weevee Map X.Y.Z
+Lua file:       Weevee - vX.Y.Z.lua
+GitHub repo:    Weevee-vX.Y.Z-Map
+Steam folder:   Weevee vX.Y.Z Map
+  (path: ...\Sid Meier's Civilization V\Assets\Maps\<Steam folder>\)
+
+Agent steps (in order)
+----------------------
+1. Confirm the new version number with the user if they did not give one.
+   Default next is the "Next version" line above.
+2. Update GetMapScriptInfo Name in the map lua to:
+     [COLOR_HIGHLIGHT_TEXT] Weevee Map X.Y.Z [ENDCOLOR]
+3. git mv the map lua:
+     Weevee - vOLD.lua  ->  Weevee - vX.Y.Z.lua
+4. Update this file: set Current version, set Next version (patch +1).
+5. Commit ALL playable map changes in that bump (not only the rename),
+   message focused on why, then push to origin.
+6. gh repo rename Weevee-vX.Y.Z-Map
+   then: git remote set-url origin https://github.com/brunotho/Weevee-vX.Y.Z-Map.git
+   Do not change git config. Do not force-push. Do not --amend unless
+   the commit protocol allows it.
+7. Tell the user to rename the Steam folder in Explorer to:
+     Weevee vX.Y.Z Map
+   and to reopen the project from that folder if Cursor loses the root.
+
+Notes
+-----
+- Download ZIP unpacks as Weevee-vX.Y.Z-Map-main. That is the folder
+  people copy into Maps. If the folder name does not match the version
+  they agreed to play, it is the wrong copy.
+- Local uncommitted edits are invisible to everyone else until step 5.
+- Do not bump by only editing the in-game title.

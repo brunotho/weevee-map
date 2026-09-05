@@ -779,8 +779,8 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 	while y < iH do
 		local step = Map.Rand(3, "NoWrap Coast Walk") - 1;
 		depth = depth + step;
-		if depth < 1 then
-			depth = 1;
+		if depth < 2 then
+			depth = 2;
 		end
 		if depth > 3 then
 			depth = 3;
@@ -797,17 +797,17 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 		end
 		y = y + 1;
 	end
-	local nIslands = 2 + Map.Rand(3, "NoWrap Back Islands");
+	local nIslands = 3 + Map.Rand(3, "NoWrap Back Islands");
 	local placed = 0;
 	local attempts = 0;
-	while placed < nIslands and attempts < 50 do
+	while placed < nIslands and attempts < 90 do
 		attempts = attempts + 1;
 		local ySpan = iH - 2;
 		if ySpan < 1 then
 			ySpan = 1;
 		end
 		local iy = 1 + Map.Rand(ySpan, "NoWrap Island Y");
-		local ix = Map.Rand(2, "NoWrap Island X");
+		local ix = 1;
 		local i = iy * iW + ix + 1;
 		if plotTypes[i] == PlotTypes.PLOT_OCEAN then
 			local adjMainland = false;
@@ -839,7 +839,7 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 					local pd = 1 + Map.Rand(6, "NoWrap Island PairDir");
 					local px = ix + dirs[pd][1];
 					local py = iy + dirs[pd][2];
-					if py >= 1 and py < iH - 1 and px >= 0 and px <= 1 then
+					if py >= 1 and py < iH - 1 and px == 1 then
 						local pi = py * iW + px + 1;
 						if plotTypes[pi] == PlotTypes.PLOT_OCEAN then
 							local pairMainland = false;
@@ -868,6 +868,11 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 				end
 			end
 		end
+	end
+	y = 0;
+	while y < iH do
+		plotTypes[y * iW + 1] = PlotTypes.PLOT_OCEAN;
+		y = y + 1;
 	end
 	y = 0;
 	while y < iH do
