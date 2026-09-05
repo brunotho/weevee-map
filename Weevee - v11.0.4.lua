@@ -17,8 +17,11 @@ local OPT_SNOW_BARRIER = 2;
 local OPT_WRAP = 3;
 local OPT_FRONT_MOUNTAIN = 4;
 local OPT_CANVAS_SHRINK = 5;
+local OPT_EXPLO_BALANCE = 6;
 local CANVAS_SHRINK_NO = 1;
 local CANVAS_SHRINK_YES = 2;
+local EXPLO_BALANCE_NO = 1;
+local EXPLO_BALANCE_YES = 2;
 local SPLIT_SNOW = 1;
 local SPLIT_SNOW_V2 = 2;
 local SPLIT_WETLAND = 3;
@@ -59,7 +62,7 @@ end
 ------------------------------------------------------------------------------
 function GetMapScriptInfo()
 	return {
-		Name = "[COLOR_HIGHLIGHT_TEXT] Weevee Map 11.0.3 [ENDCOLOR]",
+		Name = "[COLOR_HIGHLIGHT_TEXT] Weevee Map 11.0.4 [ENDCOLOR]",
 		Description = "",
 		SupportsMultiplayer = true,
 		IconIndex = 18,
@@ -122,6 +125,15 @@ function GetMapScriptInfo()
 				},
 				DefaultValue = 1,
 				SortPriority = -95,
+			},
+			{
+				Name = "[COLOR_HIGHLIGHT_TEXT]Explo Balance[ENDCOLOR]",
+				Values = {
+					"[COLOR_HIGHLIGHT_TEXT][ICON_CAPITAL] No[ENDCOLOR]",
+					"[COLOR_HIGHLIGHT_TEXT]Yes[ENDCOLOR]",
+				},
+				DefaultValue = 1,
+				SortPriority = -94,
 			},
 		},
 	}
@@ -273,6 +285,35 @@ end
 function IsSnowNoWrap()
 	local cfg = GetBarrierConfig();
 	return cfg ~= nil and cfg.wrap == false;
+end
+------------------------------------------------------------------------------
+function IsExploBalance()
+	if Map.GetCustomOption(OPT_EXPLO_BALANCE) ~= EXPLO_BALANCE_YES then
+		return false
+	end
+	return IsSnowNoWrap();
+end
+------------------------------------------------------------------------------
+local exploPlanResolved = false;
+local exploCutPct = 0;
+local exploInlandSeas = 0;
+function ResolveExploBackCoastPlan()
+	if exploPlanResolved then
+		return exploCutPct, exploInlandSeas;
+	end
+	exploPlanResolved = true;
+	if IsExploBalance() == false then
+		return exploCutPct, exploInlandSeas;
+	end
+	if Map.Rand(2, "Explo back coast plan") == 0 then
+		exploCutPct = 50;
+		exploInlandSeas = 2;
+	else
+		exploCutPct = 25;
+		exploInlandSeas = 1;
+	end
+	print("Explo plan: cut", exploCutPct, "% back coast, inland seas", exploInlandSeas);
+	return exploCutPct, exploInlandSeas;
 end
 ------------------------------------------------------------------------------
 function IsOldSnow()
@@ -894,6 +935,9 @@ function GetMapInitData(worldSize)
 	if(world ~= nil) then
 		local w = grid_size[1];
 		local h = grid_size[2];
+		if IsExploBalance() then
+			w = w - 4;
+		end
 		if Map.GetCustomOption(OPT_CANVAS_SHRINK) == CANVAS_SHRINK_YES then
 			w = w - 2 * Map.Rand(4, "Map Width Variance");
 			h = h - 2 * Map.Rand(4, "Map Height Variance");
@@ -1289,16 +1333,25 @@ end
 function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 	local evenN = {{0, 1}, {1, 0}, {0, -1}, {-1, -1}, {-1, 0}, {-1, 1}};
 	local oddN = {{1, 1}, {1, 0}, {1, -1}, {0, -1}, {-1, 0}, {0, 1}};
+	local minD = 2;
+	local maxD = 3;
 	local depth = 2;
+	local nIslands = 3 + Map.Rand(3, "NoWrap Back Islands");
+	if IsExploBalance() then
+		minD = 1;
+		maxD = 2;
+		depth = 1;
+		nIslands = 1 + Map.Rand(2, "NoWrap Back Islands");
+	end
 	local y = 0;
 	while y < iH do
 		local step = Map.Rand(3, "NoWrap Coast Walk") - 1;
 		depth = depth + step;
-		if depth < 2 then
-			depth = 2;
+		if depth < minD then
+			depth = minD;
 		end
-		if depth > 3 then
-			depth = 3;
+		if depth > maxD then
+			depth = maxD;
 		end
 		local x = 0;
 		while x <= 2 do
@@ -1312,7 +1365,33 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 		end
 		y = y + 1;
 	end
-	local nIslands = 3 + Map.Rand(3, "NoWrap Back Islands");
+	local cutPct = ResolveExploBackCoastPlan();
+	local winY0 = 0;
+	local winY1 = iH;
+	if cutPct > 0 then
+		local keepH = math.floor(iH * (100 - cutPct) / 100);
+		if keepH < 4 then
+			keepH = 4;
+		end
+		if keepH > iH then
+			keepH = iH;
+		end
+		if iH > keepH then
+			winY0 = Map.Rand(iH - keepH + 1, "Explo back coast window");
+		end
+		winY1 = winY0 + keepH;
+		y = 0;
+		while y < iH do
+			if y < winY0 or y >= winY1 then
+				local x = 0;
+				while x <= 2 do
+					plotTypes[y * iW + x + 1] = PlotTypes.PLOT_LAND;
+					x = x + 1;
+				end
+			end
+			y = y + 1;
+		end
+	end
 	local placed = 0;
 	local attempts = 0;
 	while placed < nIslands and attempts < 90 do
@@ -1386,7 +1465,9 @@ function ShapeNoWrapBackstrip(plotTypes, iW, iH)
 	end
 	y = 0;
 	while y < iH do
-		plotTypes[y * iW + 1] = PlotTypes.PLOT_OCEAN;
+		if y >= winY0 and y < winY1 then
+			plotTypes[y * iW + 1] = PlotTypes.PLOT_OCEAN;
+		end
 		y = y + 1;
 	end
 	y = 0;
@@ -1629,6 +1710,9 @@ function CountWastelandResource(resID)
 end
 ------------------------------------------------------------------------------
 function ForceWastelandCoastalLuxuries(asp)
+	if IsExploBalance() then
+		return
+	end
 	local cfg = GetBarrierConfig();
 	if cfg == nil or cfg.kind ~= "wasteland" then
 		return
@@ -1656,6 +1740,9 @@ end
 ------------------------------------------------------------------------------
 function CapSeaResources()
 	local cap = 17;
+	if IsExploBalance() then
+		cap = 14;
+	end
 	local iW, iH = Map.GetGridSize();
 	local maxX = iW;
 	if DEF_MIRRORED == 1 then
@@ -1664,7 +1751,7 @@ function CapSeaResources()
 	local fishID = GameInfoTypes["RESOURCE_FISH"];
 	local protectCoastalLux = false;
 	local cfg = GetBarrierConfig();
-	if cfg ~= nil and cfg.kind == "wasteland" then
+	if cfg ~= nil and cfg.kind == "wasteland" and IsExploBalance() == false then
 		protectCoastalLux = true;
 	end
 	local fishPlots = {};
@@ -2012,6 +2099,9 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 			else
 				polarCap = Map.Rand(3, "Snow Wrap Polar Cap");
 			end
+			if IsExploBalance() then
+				polarCap = 0;
+			end
 			if polarCap == 0 then
 				polarCap = 0;
 			else
@@ -2161,6 +2251,10 @@ function MultilayeredFractal:GeneratePlotsByRegion()
 				minX = lakeMinX;
 				maxX = lakeMaxX;
 				nBodies = 2 + Map.Rand(2, "Snow Wrap Lake Count");
+			end
+			if IsExploBalance() then
+				local cutIgnored, seas = ResolveExploBackCoastPlan();
+				nBodies = seas;
 			end
 			for n = 1, nBodies do
 				local lakeSize = 3 + Map.Rand(8, "Snow Wrap Lake Size");
